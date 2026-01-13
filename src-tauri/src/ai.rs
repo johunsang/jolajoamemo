@@ -3,12 +3,45 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-const GEMINI_MODEL: &str = "gemini-2.0-flash";
+const DEFAULT_MODEL: &str = "gemini-3-flash-preview";
 const EMBEDDING_MODEL: &str = "text-embedding-004";
 
-// Gemini API 가격 (USD per 1M tokens)
+// 지원하는 모델 목록 (최신순)
+pub const AVAILABLE_MODELS: &[(&str, &str)] = &[
+    // Gemini 3.0 (최신!)
+    ("gemini-3-pro-preview", "Gemini 3 Pro (최강)"),
+    ("gemini-3-flash-preview", "Gemini 3 Flash (속도+성능)"),
+    ("gemini-3-pro-image-preview", "Gemini 3 Pro Image (이미지생성)"),
+    // Gemini 2.5
+    ("gemini-2.5-pro", "Gemini 2.5 Pro (고성능)"),
+    ("gemini-2.5-flash", "Gemini 2.5 Flash (균형)"),
+    ("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
+    // Gemini 2.0 (기본)
+    ("gemini-2.0-flash", "Gemini 2.0 Flash (추천/저렴)"),
+    ("gemini-2.0-flash-lite", "Gemini 2.0 Flash Lite (최저가)"),
+];
+
+// Gemini API 기본 가격 (USD per 1M tokens) - 2.0 Flash 기준
 const INPUT_PRICE_PER_M: f64 = 0.10;
 const OUTPUT_PRICE_PER_M: f64 = 0.40;
+
+// 모델별 가격 (input, output per 1M tokens)
+pub fn get_model_price(model: &str) -> (f64, f64) {
+    match model {
+        // Gemini 3
+        "gemini-3-pro-preview" => (2.00, 12.00),
+        "gemini-3-flash-preview" => (0.50, 3.00),
+        "gemini-3-pro-image-preview" => (2.00, 12.00),
+        // Gemini 2.5
+        "gemini-2.5-pro" => (1.25, 10.00),
+        "gemini-2.5-flash" => (0.30, 2.50),
+        "gemini-2.5-flash-lite" => (0.10, 0.40),
+        // Gemini 2.0
+        "gemini-2.0-flash" => (0.10, 0.40),
+        "gemini-2.0-flash-lite" => (0.075, 0.30),
+        _ => (INPUT_PRICE_PER_M, OUTPUT_PRICE_PER_M),
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScheduleInfo {
@@ -92,17 +125,20 @@ struct EmbeddingData {
     values: Vec<f32>,
 }
 
-pub fn calculate_cost(input_tokens: i64, output_tokens: i64) -> f64 {
-    (input_tokens as f64 * INPUT_PRICE_PER_M / 1_000_000.0)
-        + (output_tokens as f64 * OUTPUT_PRICE_PER_M / 1_000_000.0)
+pub fn calculate_cost(model: &str, input_tokens: i64, output_tokens: i64) -> f64 {
+    let (input_price, output_price) = get_model_price(model);
+    (input_tokens as f64 * input_price / 1_000_000.0)
+        + (output_tokens as f64 * output_price / 1_000_000.0)
 }
 
 // 메모 분석 (제목, 포맷팅, 요약, 카테고리, 태그 추출)
 pub async fn analyze_memo(
     api_key: &str,
+    model: &str,
     content: &str,
     existing_memos: &[(i64, String, String)],
 ) -> Result<(AnalysisResult, TokenUsage), String> {
+    let model = if model.is_empty() { DEFAULT_MODEL } else { model };
     let client = Client::new();
 
     let existing_info = if existing_memos.is_empty() {
@@ -147,7 +183,7 @@ pub async fn analyze_memo(
     let response = client
         .post(format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            GEMINI_MODEL, api_key
+            model, api_key
         ))
         .json(&json!({
             "contents": [{"parts": [{"text": prompt}]}],
@@ -183,7 +219,7 @@ pub async fn analyze_memo(
     let token_usage = TokenUsage {
         input_tokens: usage.prompt_token_count,
         output_tokens: usage.candidates_token_count,
-        cost_usd: calculate_cost(usage.prompt_token_count, usage.candidates_token_count),
+        cost_usd: calculate_cost(model, usage.prompt_token_count, usage.candidates_token_count),
     };
 
     Ok((analysis, token_usage))
@@ -192,9 +228,11 @@ pub async fn analyze_memo(
 // RAG 질의응답
 pub async fn ask_question(
     api_key: &str,
+    model: &str,
     question: &str,
     context_memos: &[(String, String)],
 ) -> Result<(String, TokenUsage), String> {
+    let model = if model.is_empty() { DEFAULT_MODEL } else { model };
     let client = Client::new();
 
     let context = context_memos
@@ -223,7 +261,7 @@ pub async fn ask_question(
     let response = client
         .post(format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            GEMINI_MODEL, api_key
+            model, api_key
         ))
         .json(&json!({
             "contents": [{"parts": [{"text": prompt}]}],
@@ -255,7 +293,7 @@ pub async fn ask_question(
     let token_usage = TokenUsage {
         input_tokens: usage.prompt_token_count,
         output_tokens: usage.candidates_token_count,
-        cost_usd: calculate_cost(usage.prompt_token_count, usage.candidates_token_count),
+        cost_usd: calculate_cost(model, usage.prompt_token_count, usage.candidates_token_count),
     };
 
     Ok((text, token_usage))
@@ -264,9 +302,11 @@ pub async fn ask_question(
 // 여러 개 메모 자동 분리 분석
 pub async fn analyze_multi_memo(
     api_key: &str,
+    model: &str,
     content: &str,
     existing_memos: &[(i64, String, String)],
 ) -> Result<(Vec<AnalysisResult>, TokenUsage), String> {
+    let model = if model.is_empty() { DEFAULT_MODEL } else { model };
     let client = Client::new();
 
     let existing_info = if existing_memos.is_empty() {
@@ -383,7 +423,7 @@ pub async fn analyze_multi_memo(
     let response = client
         .post(format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            GEMINI_MODEL, api_key
+            model, api_key
         ))
         .json(&json!({
             "contents": [{"parts": [{"text": prompt}]}],
@@ -419,7 +459,7 @@ pub async fn analyze_multi_memo(
     let token_usage = TokenUsage {
         input_tokens: usage.prompt_token_count,
         output_tokens: usage.candidates_token_count,
-        cost_usd: calculate_cost(usage.prompt_token_count, usage.candidates_token_count),
+        cost_usd: calculate_cost(model, usage.prompt_token_count, usage.candidates_token_count),
     };
 
     Ok((multi_result.items, token_usage))

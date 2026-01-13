@@ -98,6 +98,19 @@ function App() {
   const [_opacity, setOpacity] = useState(100);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [aiModel, setAiModel] = useState("gemini-3-flash-preview");
+
+  // 사용 가능한 AI 모델 목록
+  const availableModels = [
+    { id: "gemini-3-pro-preview", name: "Gemini 3 Pro (최강)" },
+    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (추천)" },
+    { id: "gemini-3-pro-image-preview", name: "Gemini 3 Pro Image" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (고성능)" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (균형)" },
+    { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
+    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash (저렴)" },
+    { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite (최저가)" },
+  ];
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -228,6 +241,8 @@ function App() {
         setZoomLevel(zoomVal);
         document.documentElement.style.fontSize = `${zoomVal}%`;
       }
+      const model = await invoke<string>("get_setting", { key: "gemini_model" });
+      if (model) setAiModel(model);
     } catch (e) { console.error(e); }
   };
 
@@ -350,6 +365,7 @@ function App() {
   const handleSaveSettings = async () => {
     try {
       await invoke("save_setting", { key: "gemini_api_key", value: apiKey });
+      await invoke("save_setting", { key: "gemini_model", value: aiModel });
       await invoke("save_setting", { key: "language", value: language });
       await invoke("save_setting", { key: "zoom_level", value: zoomLevel.toString() });
       i18n.changeLanguage(language);
@@ -883,6 +899,16 @@ function App() {
                     <li>$ {t("settings.apiKeyStep2")}</li>
                     <li>$ {t("settings.apiKeyStep3")}</li>
                   </ol>
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>AI MODEL</div>
+                <select value={aiModel} onChange={(e) => setAiModel(e.target.value)} className="input" style={{ fontSize: '11px', padding: '4px 6px' }}>
+                  {availableModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <div className="mt-2" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
+                  3.x = 최신/강력 | 2.5 = 균형 | 2.0 = 저렴
                 </div>
               </div>
 

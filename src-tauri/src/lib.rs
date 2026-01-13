@@ -42,6 +42,9 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
         return Err("API 키를 먼저 설정해주세요".to_string());
     }
 
+    // 모델 설정 가져오기 (없으면 기본값)
+    let model = db::get_setting("gemini_model").unwrap_or_default();
+
     // 기존 메모 목록 가져오기
     let existing_memos = db::get_all_memos().map_err(|e| e.to_string())?;
     let memo_info: Vec<(i64, String, String)> = existing_memos
@@ -50,12 +53,13 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
         .collect();
 
     // AI 분석 (여러 개 자동 분리)
-    let (items, usage) = ai::analyze_multi_memo(&api_key, &content, &memo_info).await?;
+    let (items, usage) = ai::analyze_multi_memo(&api_key, &model, &content, &memo_info).await?;
 
     // 사용량 기록
+    let model_name = if model.is_empty() { "gemini-3-flash-preview" } else { &model };
     db::log_api_usage(
         "analyze",
-        "gemini-2.0-flash",
+        model_name,
         usage.input_tokens,
         usage.output_tokens,
         usage.cost_usd,
@@ -196,6 +200,9 @@ async fn search_memo(question: String) -> Result<SearchResult, String> {
         return Err("API 키를 먼저 설정해주세요".to_string());
     }
 
+    // 모델 설정 가져오기 (없으면 기본값)
+    let model = db::get_setting("gemini_model").unwrap_or_default();
+
     // 모든 메모 가져오기
     let memos = db::get_all_memos().map_err(|e| e.to_string())?;
 
@@ -215,12 +222,13 @@ async fn search_memo(question: String) -> Result<SearchResult, String> {
         .collect();
 
     // AI 질의응답
-    let (answer, usage) = ai::ask_question(&api_key, &question, &context).await?;
+    let (answer, usage) = ai::ask_question(&api_key, &model, &question, &context).await?;
 
     // 사용량 기록
+    let model_name = if model.is_empty() { "gemini-3-flash-preview" } else { &model };
     db::log_api_usage(
         "search",
-        "gemini-2.0-flash",
+        model_name,
         usage.input_tokens,
         usage.output_tokens,
         usage.cost_usd,
