@@ -457,7 +457,7 @@ function App() {
       {/* ===== MAIN LAYOUT ===== */}
       <div className="flex-1 flex overflow-hidden">
         {/* ===== LEFT SIDEBAR (카테고리) ===== */}
-        <div className="w-80 flex flex-col overflow-hidden" style={{ borderRight: '3px solid var(--color-border)' }}>
+        <div className="w-64 flex flex-col overflow-hidden" style={{ borderRight: '3px solid var(--color-border)' }}>
           <div className="p-4" style={{ borderBottom: '2px solid var(--color-border)' }}>
             <p className="section-label">CATEGORIES ({memos.length})</p>
           </div>
