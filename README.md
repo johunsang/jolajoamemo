@@ -1,8 +1,13 @@
-# JolaJoa Memo
+<p align="center">
+  <img src="assets/logo.png" alt="JolaJoa Memo" width="300">
+</p>
 
-**AI가 알아서 정리하는 스마트 메모장**
+<h1 align="center">JolaJoa Memo</h1>
 
-메모만 던지면 AI가 자동으로 제목, 카테고리, 태그를 생성합니다.
+<p align="center">
+  <strong>AI가 알아서 정리하는 스마트 메모장</strong><br>
+  메모만 던지면 AI가 자동으로 제목, 카테고리, 태그를 생성합니다.
+</p>
 
 ![License](https://img.shields.io/badge/license-MIT-black)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-black)

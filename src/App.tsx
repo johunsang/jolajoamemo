@@ -244,6 +244,17 @@ function App() {
     } catch (e) { setError(String(e)); }
   };
 
+  const deleteAllMemos = async () => {
+    if (!confirm(t("confirm.deleteAll") || "정말로 모든 메모를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
+    if (!confirm("⚠️ 마지막 확인: 모든 데이터가 영구 삭제됩니다!")) return;
+    try {
+      const count = await invoke<number>("delete_all_memos");
+      setResult(`${count}개의 메모가 삭제되었습니다.`);
+      setSelectedMemo(null);
+      loadMemos();
+    } catch (e) { setError(String(e)); }
+  };
+
   const handleDrop = async (e: React.DragEvent, targetCategory: string) => {
     e.preventDefault();
     if (draggedMemo && draggedMemo.category !== targetCategory) {
@@ -595,6 +606,19 @@ function App() {
                     <div className="btn btn-secondary text-center cursor-pointer">IMPORT</div>
                   </label>
                 </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header">DANGER_ZONE</div>
+                <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>
+                  ⚠️ 이 작업은 되돌릴 수 없습니다. 모든 메모가 영구적으로 삭제됩니다.
+                </p>
+                <button
+                  onClick={deleteAllMemos}
+                  className="btn btn-danger w-full"
+                >
+                  DELETE_ALL_MEMOS ({memos.length})
+                </button>
               </div>
 
               {(result || error) && (

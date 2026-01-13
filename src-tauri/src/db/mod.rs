@@ -213,6 +213,13 @@ pub fn get_today_usage() -> Result<(i64, i64, f64)> {
     Ok(result)
 }
 
+// 전체 메모 삭제
+pub fn delete_all_memos() -> Result<usize> {
+    let conn = get_db().lock();
+    let count = conn.execute("DELETE FROM memos", [])?;
+    Ok(count)
+}
+
 // 메모 전체 업데이트 (편집용)
 pub fn update_memo_full(id: i64, title: &str, formatted_content: &str, category: &str, tags: &str) -> Result<()> {
     let conn = get_db().lock();

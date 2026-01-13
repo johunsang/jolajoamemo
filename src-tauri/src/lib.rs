@@ -247,6 +247,12 @@ fn delete_memo(id: i64) -> Result<(), String> {
     db::delete_memo(id).map_err(|e| e.to_string())
 }
 
+// 전체 메모 삭제
+#[tauri::command]
+fn delete_all_memos() -> Result<usize, String> {
+    db::delete_all_memos().map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -266,7 +272,8 @@ pub fn run() {
             export_db,
             import_db,
             update_memo,
-            delete_memo
+            delete_memo,
+            delete_all_memos
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
