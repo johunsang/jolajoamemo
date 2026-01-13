@@ -67,9 +67,9 @@
 
 ### 다운로드
 
-- [macOS (Apple Silicon)](https://github.com/user/jolajoamemo/releases/latest)
-- [macOS (Intel)](https://github.com/user/jolajoamemo/releases/latest)
-- [Windows](https://github.com/user/jolajoamemo/releases/latest)
+- [macOS (Apple Silicon)](https://github.com/johunsang/jolajoamemo/releases/latest)
+- [macOS (Intel)](https://github.com/johunsang/jolajoamemo/releases/latest)
+- [Windows](https://github.com/johunsang/jolajoamemo/releases/latest)
 
 ### 요구사항
 
