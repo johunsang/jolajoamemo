@@ -54,28 +54,89 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'JolaJoa Memo v__VERSION__'
           releaseBody: |
-            ## JolaJoa Memo v__VERSION__
+            # JolaJoa Memo v__VERSION__
 
-            AI가 알아서 정리하는 스마트 메모장
+            ---
 
-            ### Downloads
+            ## 🇰🇷 한국어
 
-            | Platform | File |
-            |----------|------|
-            | macOS (Apple Silicon M1/M2/M3) | `JolaJoa Memo_x.x.x_aarch64.dmg` |
-            | macOS (Intel) | `JolaJoa Memo_x.x.x_x64.dmg` |
-            | Windows | `JolaJoa Memo_x.x.x_x64-setup.exe` |
+            **AI가 알아서 정리하는 스마트 메모장**
 
-            ### Requirements
+            메모만 던지면 AI가 자동으로 제목, 카테고리, 태그를 생성합니다.
+            자연어로 질문하면 AI가 메모를 검색해서 답변합니다.
+
+            ### 주요 기능
+            - ✨ **AI 자동 정리** - Gemini AI가 메모를 분석해 자동 분류
+            - 🔍 **자연어 검색** - "지난주 회의 내용이 뭐였지?" 처럼 질문
+            - 💾 **실시간 자동저장** - 편집 중 자동 저장 (저장 버튼 불필요)
+            - 🗂️ **드래그 앤 드롭** - 메모를 드래그해서 카테고리 이동
+            - 🌙 **다크 모드** - 눈의 피로를 줄이는 다크 테마
+            - 🌍 **다국어 지원** - 한국어, English, 日本語, 中文, Français
+
+            ### 요구사항
             - [Gemini API Key](https://aistudio.google.com/apikey) (무료)
 
-            ### Features
-            - AI 자동 메모 정리 (제목, 카테고리, 태그)
-            - 자연어 검색
-            - 실시간 자동저장
-            - 드래그 앤 드롭 카테고리 이동
-            - 다크모드
-            - 다국어 지원 (한/영/일/중/불)
+            ---
+
+            ## 🇺🇸 English
+
+            **AI-Powered Smart Notepad**
+
+            Just paste your notes and AI automatically generates titles, categories, and tags.
+            Ask questions in natural language and AI searches your notes to answer.
+
+            ### Key Features
+            - ✨ **AI Auto-Organization** - Gemini AI analyzes and categorizes your notes
+            - 🔍 **Natural Language Search** - Ask "What was discussed in last week's meeting?"
+            - 💾 **Real-time Auto-Save** - Saves automatically while editing
+            - 🗂️ **Drag & Drop** - Move notes between categories by dragging
+            - 🌙 **Dark Mode** - Eye-friendly dark theme
+            - 🌍 **Multilingual** - Korean, English, Japanese, Chinese, French
+
+            ### Requirements
+            - [Gemini API Key](https://aistudio.google.com/apikey) (Free)
+
+            ---
+
+            ## 🇯🇵 日本語
+
+            **AIが自動整理するスマートメモ帳**
+
+            メモを入力するだけで、AIが自動的にタイトル、カテゴリ、タグを生成します。
+            自然言語で質問すると、AIがメモを検索して回答します。
+
+            ### 主な機能
+            - ✨ **AI自動整理** - Gemini AIがメモを分析して自動分類
+            - 🔍 **自然言語検索** - 「先週の会議で何を話した？」のように質問
+            - 💾 **リアルタイム自動保存** - 編集中に自動保存
+            - 🗂️ **ドラッグ＆ドロップ** - メモをドラッグしてカテゴリ移動
+            - 🌙 **ダークモード** - 目に優しいダークテーマ
+            - 🌍 **多言語対応** - 韓国語、英語、日本語、中国語、フランス語
+
+            ### 必要条件
+            - [Gemini API Key](https://aistudio.google.com/apikey) (無料)
+
+            ---
+
+            ## 📥 Downloads
+
+            | Platform | File | Note |
+            |----------|------|------|
+            | **macOS (Apple Silicon)** | `JolaJoa Memo_x.x.x_aarch64.dmg` | M1, M2, M3 Mac |
+            | **macOS (Intel)** | `JolaJoa Memo_x.x.x_x64.dmg` | Intel Mac |
+            | **Windows** | `JolaJoa Memo_x.x.x_x64-setup.exe` | Windows 10/11 |
+
+            ---
+
+            ## 📊 API Usage & Cost
+
+            | Model | Input | Output |
+            |-------|-------|--------|
+            | Gemini 2.0 Flash | $0.10 / 1M tokens | $0.40 / 1M tokens |
+
+            **예시 / Example / 例:**
+            - 메모 저장 1회: ~$0.0005 (약 0.5원)
+            - 하루 100회 사용: ~$0.15 (약 200원)
 
           releaseDraft: true
           prerelease: false
