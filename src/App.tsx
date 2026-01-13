@@ -458,10 +458,11 @@ function App() {
             <button
               key={item.id}
               onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
-              className="px-3 py-1 text-sm font-bold uppercase"
+              className="px-3 py-1 text-xs font-bold uppercase"
               style={{
-                background: tab === item.id && !selectedMemo ? 'var(--color-bg)' : 'transparent',
-                color: tab === item.id && !selectedMemo ? 'var(--color-text)' : 'inherit'
+                background: tab === item.id && !selectedMemo ? 'var(--color-bg)' : 'var(--color-bg)',
+                color: tab === item.id && !selectedMemo ? 'var(--color-accent)' : 'var(--color-text)',
+                border: tab === item.id && !selectedMemo ? '2px solid var(--color-accent)' : '2px solid var(--color-border)'
               }}
             >
               {item.label}
