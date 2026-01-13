@@ -432,6 +432,15 @@ function App() {
 
         <div className="flex items-center gap-4">
           {saving && <span className="text-sm opacity-70">(SAVING...)</span>}
+          <a
+            href="https://github.com/johunsang/jolajoamemo/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-5 py-2 text-base font-bold uppercase"
+            style={{ border: '2px solid #ff0000', color: '#ff0000', textDecoration: 'none' }}
+          >
+            FEEDBACK
+          </a>
           <button onClick={toggleDarkMode} className="px-5 py-2 text-base font-bold uppercase" style={{ border: '2px solid var(--color-bg)' }}>
             {darkMode ? '☀ LIGHT' : '☾ DARK'}
           </button>
