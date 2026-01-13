@@ -1,0 +1,35 @@
+{
+  "app": {
+    "title": "JolaJoa Memo",
+    "input": "Input",
+    "search": "Search",
+    "settings": "Settings"
+  },
+  "input": {
+    "placeholder": "Paste anything here...\n\nExamples:\n- John Doe 010-1234-5678\n- Meeting notes\n- Ideas\n- Code snippets",
+    "submit": "Save",
+    "analyzing": "AI analyzing...",
+    "success": "Saved!",
+    "merged": "Merged with existing memo"
+  },
+  "search": {
+    "placeholder": "Ask a question... (e.g., What's John's phone number?)",
+    "submit": "Search",
+    "thinking": "Thinking...",
+    "noMemos": "No memos saved yet"
+  },
+  "settings": {
+    "apiKey": "Gemini API Key",
+    "apiKeyPlaceholder": "Enter your API key",
+    "language": "Language",
+    "save": "Save",
+    "saved": "Saved!"
+  },
+  "usage": {
+    "today": "Today's Usage",
+    "tokens": "tokens",
+    "input": "Input",
+    "output": "Output",
+    "cost": "Cost"
+  }
+}

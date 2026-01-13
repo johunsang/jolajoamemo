@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    background: #000;
+    color: #fff;
+    min-height: 100vh;
+}
+
+#root {
+    min-height: 100vh;
+}
+
+/* Brutalist Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #000;
+    border-left: 1px solid #333;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #fff;
+}
+
+/* Brutalist Input */
+input,
+textarea,
+select {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* Animations */
+@keyframes blink {
+    0%,
+    50% {
+        opacity: 1;
+    }
+    51%,
+    100% {
+        opacity: 0;
+    }
+}
+
+.cursor-blink::after {
+    content: "_";
+    animation: blink 1s infinite;
+}

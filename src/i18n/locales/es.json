@@ -1,0 +1,35 @@
+{
+  "app": {
+    "title": "JolaJoa Memo",
+    "input": "Entrada",
+    "search": "Buscar",
+    "settings": "Ajustes"
+  },
+  "input": {
+    "placeholder": "Pega cualquier cosa aquí...\n\nEjemplos:\n- Juan Pérez 010-1234-5678\n- Notas de reunión\n- Ideas\n- Fragmentos de código",
+    "submit": "Guardar",
+    "analyzing": "AI analizando...",
+    "success": "¡Guardado!",
+    "merged": "Fusionado con nota existente"
+  },
+  "search": {
+    "placeholder": "Haz una pregunta... (ej: ¿Cuál es el teléfono de Juan?)",
+    "submit": "Buscar",
+    "thinking": "Pensando...",
+    "noMemos": "No hay notas guardadas"
+  },
+  "settings": {
+    "apiKey": "Clave API de Gemini",
+    "apiKeyPlaceholder": "Ingresa tu clave API",
+    "language": "Idioma",
+    "save": "Guardar",
+    "saved": "¡Guardado!"
+  },
+  "usage": {
+    "today": "Uso de hoy",
+    "tokens": "tokens",
+    "input": "Entrada",
+    "output": "Salida",
+    "cost": "Costo"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "app": {
+    "title": "JolaJoa Memo",
+    "input": "Eingabe",
+    "search": "Suchen",
+    "settings": "Einstellungen"
+  },
+  "input": {
+    "placeholder": "Fügen Sie hier etwas ein...\n\nBeispiele:\n- Max Mustermann 010-1234-5678\n- Besprechungsnotizen\n- Ideen\n- Code-Snippets",
+    "submit": "Speichern",
+    "analyzing": "KI analysiert...",
+    "success": "Gespeichert!",
+    "merged": "Mit bestehender Notiz zusammengeführt"
+  },
+  "search": {
+    "placeholder": "Stellen Sie eine Frage... (z.B.: Was ist Max' Telefonnummer?)",
+    "submit": "Suchen",
+    "thinking": "Denke nach...",
+    "noMemos": "Keine Notizen gespeichert"
+  },
+  "settings": {
+    "apiKey": "Gemini API-Schlüssel",
+    "apiKeyPlaceholder": "API-Schlüssel eingeben",
+    "language": "Sprache",
+    "save": "Speichern",
+    "saved": "Gespeichert!"
+  },
+  "usage": {
+    "today": "Heutige Nutzung",
+    "tokens": "Token",
+    "input": "Eingabe",
+    "output": "Ausgabe",
+    "cost": "Kosten"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "app": {
+    "title": "JolaJoa 메모",
+    "input": "입력",
+    "search": "찾기",
+    "settings": "설정"
+  },
+  "input": {
+    "placeholder": "아무 내용이나 붙여넣으세요...\n\n예시:\n- 홍길동 010-1234-5678\n- 회의 내용 정리\n- 아이디어 메모\n- 코드 스니펫",
+    "submit": "저장",
+    "analyzing": "AI 분석 중...",
+    "success": "저장 완료!",
+    "merged": "기존 메모에 병합됨"
+  },
+  "search": {
+    "placeholder": "질문하세요... (예: 홍길동 전화번호는?)",
+    "submit": "검색",
+    "thinking": "생각 중...",
+    "noMemos": "저장된 메모가 없습니다"
+  },
+  "settings": {
+    "apiKey": "Gemini API 키",
+    "apiKeyPlaceholder": "API 키를 입력하세요",
+    "language": "언어",
+    "save": "저장",
+    "saved": "저장됨!"
+  },
+  "usage": {
+    "today": "오늘 사용량",
+    "tokens": "토큰",
+    "input": "입력",
+    "output": "출력",
+    "cost": "비용"
+  }
+}
