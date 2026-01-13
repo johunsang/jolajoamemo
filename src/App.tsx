@@ -236,7 +236,8 @@ function App() {
   };
 
   const deleteMemo = async () => {
-    if (!selectedMemo || !confirm(t("confirm.delete"))) return;
+    if (!selectedMemo) return;
+    // confirm 제거 - Tauri webview에서 작동 안함
     try {
       await invoke("delete_memo", { id: selectedMemo.id });
       setSelectedMemo(null);
@@ -245,8 +246,7 @@ function App() {
   };
 
   const deleteAllMemos = async () => {
-    if (!confirm(t("confirm.deleteAll") || "정말로 모든 메모를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
-    if (!confirm("⚠️ 마지막 확인: 모든 데이터가 영구 삭제됩니다!")) return;
+    // confirm 제거 - Tauri webview에서 작동 안함
     try {
       const count = await invoke<number>("delete_all_memos");
       setResult(`${count}개의 메모가 삭제되었습니다.`);
@@ -276,10 +276,11 @@ function App() {
 
   const buildCategoryTree = (memoList: Memo[]): CategoryNode => {
     const root: CategoryNode = { name: "", path: "", memos: [], children: {} };
+    const MAX_DEPTH = 2; // 최대 2뎁스로 제한
 
     memoList.forEach(memo => {
       const category = memo.category || "etc";
-      const parts = category.split("/").filter(p => p.trim());
+      const parts = category.split("/").filter(p => p.trim()).slice(0, MAX_DEPTH); // 2뎁스까지만
 
       let current = root;
       let currentPath = "";
@@ -500,12 +501,16 @@ function App() {
                 <div className="flex items-center gap-4">
                   <button onClick={handleInput} disabled={loading || !inputText.trim()} className="btn btn-primary">
                     {loading && <span className="loading-spinner mr-2" />}
-                    {loading ? 'PROCESSING...' : 'SAVE'}
+                    {loading ? 'SAVING...' : 'SAVE'}
                   </button>
-                  {(result || error) && (
-                    <span className={`status ${error ? 'status-error' : 'status-success'}`}>
-                      {error || result}
-                    </span>
+                  {loading && (
+                    <span className="status status-warning">SAVING...</span>
+                  )}
+                  {!loading && result && (
+                    <span className="status status-success">SAVED ✓</span>
+                  )}
+                  {!loading && error && (
+                    <span className="status status-error">{error}</span>
                   )}
                 </div>
               </div>
