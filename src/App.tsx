@@ -72,6 +72,7 @@ function App() {
   const [updating, setUpdating] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [opacity, setOpacity] = useState(100);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -231,7 +232,8 @@ function App() {
     try {
       const list = await invoke<Memo[]>("get_memos");
       setMemos(list);
-      setExpandedCategories(new Set(list.map((m) => m.category || "etc")));
+      // 카테고리 기본 닫힘 상태
+      setExpandedCategories(new Set());
     } catch (e) { console.error(e); }
   };
 
@@ -439,44 +441,54 @@ function App() {
   return (
     <div className="h-screen flex flex-col" style={{ background: 'var(--color-bg)' }}>
       {/* ===== TOP NAV BAR ===== */}
-      <div className="h-12 flex items-center justify-between px-4" style={{ borderBottom: '2px solid var(--color-border)', background: 'var(--color-text)', color: 'var(--color-bg)' }}>
-        <h1 className="text-sm font-bold uppercase tracking-wide">{t("app.title")}</h1>
+      <div className="h-9 flex items-center justify-between px-3" style={{ borderBottom: '2px solid var(--color-border)', background: 'var(--color-text)', color: 'var(--color-bg)' }}>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="px-2 py-1 text-sm font-bold" style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
+            {sidebarOpen ? '◀' : '▶'}
+          </button>
+          <span className="text-sm font-bold uppercase">{t("app.title")}</span>
+        </div>
 
-        <nav className="flex gap-2">
+        <nav className="flex gap-1">
           {[
-            { id: "input" as Tab, label: t("nav.newMemo") },
-            { id: "search" as Tab, label: t("nav.search") },
-            { id: "settings" as Tab, label: t("nav.settings") },
+            { id: "input" as Tab, label: "NEW" },
+            { id: "search" as Tab, label: "SEARCH" },
+            { id: "settings" as Tab, label: "SET" },
           ].map((item) => (
             <button
               key={item.id}
               onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
-              className={`px-4 py-2 text-xs font-bold uppercase ${
-                tab === item.id && !selectedMemo
-                  ? 'bg-[var(--color-bg)] text-[var(--color-text)]'
-                  : 'hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text)]'
-              }`}
-              style={{ border: '2px solid var(--color-bg)' }}
+              className="px-3 py-1 text-sm font-bold uppercase"
+              style={{
+                background: tab === item.id && !selectedMemo ? 'var(--color-bg)' : 'transparent',
+                color: tab === item.id && !selectedMemo ? 'var(--color-text)' : 'inherit'
+              }}
             >
-              [{item.id.toUpperCase()}]
+              {item.label}
             </button>
           ))}
         </nav>
 
         <div className="flex items-center gap-2">
-          {saving && <span className="text-xs opacity-70">(SAVING...)</span>}
+          {saving && <span className="text-sm opacity-70">...</span>}
+          <button onClick={toggleAlwaysOnTop} className="px-2 py-1 text-sm" style={{ background: alwaysOnTop ? 'var(--color-accent)' : 'transparent', color: alwaysOnTop ? '#fff' : 'inherit' }} title="Always on Top">
+            📌
+          </button>
+          <button onClick={() => changeOpacity(opacity >= 100 ? 70 : 100)} className="px-2 py-1 text-sm" style={{ background: opacity < 100 ? 'var(--color-accent)' : 'transparent', color: opacity < 100 ? '#fff' : 'inherit' }} title={`Opacity ${opacity}%`}>
+            👁
+          </button>
+          <button onClick={toggleDarkMode} className="px-2 py-1 text-sm" style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
+            {darkMode ? '☀' : '☾'}
+          </button>
           <a
             href="https://github.com/johunsang/jolajoamemo/issues"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3 py-1 text-xs font-bold uppercase"
-            style={{ border: '2px solid #ff0000', color: '#ff0000', textDecoration: 'none' }}
+            className="px-3 py-1 text-sm font-bold"
+            style={{ background: '#ff0000', color: '#ffffff', textDecoration: 'none' }}
           >
             FEEDBACK
           </a>
-          <button onClick={toggleDarkMode} className="px-3 py-1 text-xs font-bold uppercase" style={{ border: '2px solid var(--color-bg)' }}>
-            {darkMode ? '☀' : '☾'}
-          </button>
         </div>
       </div>
 
@@ -518,9 +530,23 @@ function App() {
       {/* ===== MAIN LAYOUT ===== */}
       <div className="flex-1 flex overflow-hidden">
         {/* ===== LEFT SIDEBAR (카테고리) ===== */}
-        <div className="w-48 flex flex-col overflow-hidden" style={{ borderRight: '2px solid var(--color-border)' }}>
-          <div className="px-2 py-1" style={{ borderBottom: '1px solid var(--color-border)' }}>
+        {sidebarOpen && (
+        <div className="w-44 flex flex-col overflow-hidden" style={{ borderRight: '2px solid var(--color-border)' }}>
+          <div className="px-2 py-1 flex justify-between items-center" style={{ borderBottom: '1px solid var(--color-border)' }}>
             <p className="section-label">MEMOS ({memos.length})</p>
+            <button
+              onClick={() => {
+                if (expandedCategories.size > 0) {
+                  setExpandedCategories(new Set());
+                } else {
+                  setExpandedCategories(new Set(allCategories));
+                }
+              }}
+              className="text-xs px-1"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {expandedCategories.size > 0 ? '[-]' : '[+]'}
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
@@ -542,30 +568,28 @@ function App() {
             </div>
           )}
         </div>
+        )}
 
         {/* ===== MAIN CONTENT ===== */}
         <div className="flex-1 overflow-auto p-4" style={{ background: 'var(--color-bg-secondary)' }}>
           {/* ===== NEW MEMO ===== */}
           {tab === "input" && !selectedMemo && (
-            <div>
-              <div className="card" style={{ padding: '8px' }}>
-                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>{t("input.title")}</div>
-                <textarea
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder={t("input.placeholder")}
-                  className="input h-36 resize-none mb-2"
-                  style={{ fontSize: '12px' }}
-                  disabled={loading}
-                />
-                <div className="flex items-center gap-2">
-                  <button onClick={handleInput} disabled={loading || !inputText.trim()} className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '11px' }}>
-                    {loading && <span className="loading-spinner mr-1" style={{ width: '10px', height: '10px' }} />}
-                    {loading ? 'SAVING...' : 'SAVE'}
-                  </button>
-                  {!loading && result && <span className="status status-success" style={{ fontSize: '10px' }}>SAVED ✓</span>}
-                  {!loading && error && <span className="status status-error" style={{ fontSize: '10px' }}>{error}</span>}
-                </div>
+            <div className="card" style={{ padding: '8px' }}>
+              <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>{t("input.title")}</div>
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder={t("input.placeholder")}
+                className="input resize-none mb-2"
+                style={{ fontSize: '12px', height: '120px' }}
+                disabled={loading}
+              />
+              <div className="flex items-center gap-2">
+                <button onClick={handleInput} disabled={loading || !inputText.trim()} className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '11px' }}>
+                  {loading ? 'SAVING...' : 'SAVE'}
+                </button>
+                {!loading && result && <span style={{ fontSize: '10px', color: 'var(--color-success)' }}>✓ SAVED</span>}
+                {!loading && error && <span style={{ fontSize: '10px', color: 'var(--color-error)' }}>{error}</span>}
               </div>
             </div>
           )}
@@ -625,22 +649,11 @@ function App() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                <div className="card flex-1" style={{ padding: '8px' }}>
-                  <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>LANGUAGE</div>
-                  <select value={language} onChange={(e) => setLanguage(e.target.value)} className="input" style={{ fontSize: '11px', padding: '4px 6px' }}>
-                    {languages.map((lang) => <option key={lang.code} value={lang.code}>{lang.name}</option>)}
-                  </select>
-                </div>
-                <div className="card flex-1" style={{ padding: '8px' }}>
-                  <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>WINDOW</div>
-                  <div className="flex gap-2">
-                    <button onClick={toggleAlwaysOnTop} className={`btn ${alwaysOnTop ? 'btn-active' : 'btn-secondary'} flex-1`} style={{ padding: '4px 6px', fontSize: '10px' }}>
-                      {alwaysOnTop ? '📌 ON' : '📌 OFF'}
-                    </button>
-                    <input type="range" min="50" max="100" value={opacity} onChange={(e) => changeOpacity(Number(e.target.value))} className="flex-1" title={`${opacity}%`} />
-                  </div>
-                </div>
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>LANGUAGE</div>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="input" style={{ fontSize: '11px', padding: '4px 6px' }}>
+                  {languages.map((lang) => <option key={lang.code} value={lang.code}>{lang.name}</option>)}
+                </select>
               </div>
 
               <button onClick={handleSaveSettings} className="btn btn-primary w-full" style={{ padding: '6px 12px', fontSize: '11px' }}>SAVE_SETTINGS</button>

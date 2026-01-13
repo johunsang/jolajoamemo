@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "JOLAJOA_MEMO",
-        "width": 960,
-        "height": 640,
-        "minWidth": 700,
-        "minHeight": 500
+        "width": 800,
+        "height": 520,
+        "minWidth": 600,
+        "minHeight": 400
       }
     ],
     "security": {
