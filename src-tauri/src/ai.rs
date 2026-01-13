@@ -19,7 +19,6 @@ pub const AVAILABLE_MODELS: &[(&str, &str)] = &[
     ("gemini-3-flash-preview", "Gemini 3 Flash (속도+성능)"),
     ("gemini-3-pro-preview", "Gemini 3 Pro (최강)"),
 ];
-
 // Gemini API 기본 가격 (USD per 1M tokens) - 2.0 Flash 기준
 const INPUT_PRICE_PER_M: f64 = 0.10;
 const OUTPUT_PRICE_PER_M: f64 = 0.40;
