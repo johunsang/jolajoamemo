@@ -576,22 +576,29 @@ function App() {
           {/* ===== NEW MEMO ===== */}
           {tab === "input" && !selectedMemo && (
             <div className="card" style={{ padding: '8px' }}>
-              <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>{t("input.title")}</div>
+              <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
+                {t("input.title")}
+                {loading && <span style={{ marginLeft: '8px', color: 'var(--color-warning)' }}>저장중...</span>}
+                {!loading && result && <span style={{ marginLeft: '8px', color: 'var(--color-success)' }}>✓</span>}
+              </div>
               <textarea
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={(e) => {
+                  setInputText(e.target.value);
+                  // 자동 저장: 2초 후 저장
+                  if (e.target.value.trim().length > 10) {
+                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                    saveTimeoutRef.current = setTimeout(() => {
+                      if (e.target.value.trim().length > 10) handleInput();
+                    }, 2000);
+                  }
+                }}
                 placeholder={t("input.placeholder")}
-                className="input resize-none mb-2"
+                className="input resize-none"
                 style={{ fontSize: '12px', height: '120px' }}
                 disabled={loading}
               />
-              <div className="flex items-center gap-2">
-                <button onClick={handleInput} disabled={loading || !inputText.trim()} className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '11px' }}>
-                  {loading ? 'SAVING...' : 'SAVE'}
-                </button>
-                {!loading && result && <span style={{ fontSize: '10px', color: 'var(--color-success)' }}>✓ SAVED</span>}
-                {!loading && error && <span style={{ fontSize: '10px', color: 'var(--color-error)' }}>{error}</span>}
-              </div>
+              {error && <p style={{ fontSize: '10px', color: 'var(--color-error)', marginTop: '4px' }}>{error}</p>}
             </div>
           )}
 
