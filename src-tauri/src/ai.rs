@@ -3,22 +3,21 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-const DEFAULT_MODEL: &str = "gemini-3-flash-preview";
+const DEFAULT_MODEL: &str = "gemini-2.0-flash-lite";
 const EMBEDDING_MODEL: &str = "text-embedding-004";
 
-// 지원하는 모델 목록 (최신순)
+// 지원하는 모델 목록 (저렴한 순)
 pub const AVAILABLE_MODELS: &[(&str, &str)] = &[
-    // Gemini 3.0 (최신!)
-    ("gemini-3-pro-preview", "Gemini 3 Pro (최강)"),
-    ("gemini-3-flash-preview", "Gemini 3 Flash (속도+성능)"),
-    ("gemini-3-pro-image-preview", "Gemini 3 Pro Image (이미지생성)"),
+    // Gemini 2.0 (기본/저렴)
+    ("gemini-2.0-flash-lite", "Gemini 2.0 Flash Lite (기본/최저가)"),
+    ("gemini-2.0-flash", "Gemini 2.0 Flash"),
     // Gemini 2.5
-    ("gemini-2.5-pro", "Gemini 2.5 Pro (고성능)"),
-    ("gemini-2.5-flash", "Gemini 2.5 Flash (균형)"),
     ("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
-    // Gemini 2.0 (기본)
-    ("gemini-2.0-flash", "Gemini 2.0 Flash (추천/저렴)"),
-    ("gemini-2.0-flash-lite", "Gemini 2.0 Flash Lite (최저가)"),
+    ("gemini-2.5-flash", "Gemini 2.5 Flash (균형)"),
+    ("gemini-2.5-pro", "Gemini 2.5 Pro (고성능)"),
+    // Gemini 3.0 (최신!)
+    ("gemini-3-flash-preview", "Gemini 3 Flash (속도+성능)"),
+    ("gemini-3-pro-preview", "Gemini 3 Pro (최강)"),
 ];
 
 // Gemini API 기본 가격 (USD per 1M tokens) - 2.0 Flash 기준
@@ -28,17 +27,16 @@ const OUTPUT_PRICE_PER_M: f64 = 0.40;
 // 모델별 가격 (input, output per 1M tokens)
 pub fn get_model_price(model: &str) -> (f64, f64) {
     match model {
-        // Gemini 3
-        "gemini-3-pro-preview" => (2.00, 12.00),
-        "gemini-3-flash-preview" => (0.50, 3.00),
-        "gemini-3-pro-image-preview" => (2.00, 12.00),
-        // Gemini 2.5
-        "gemini-2.5-pro" => (1.25, 10.00),
-        "gemini-2.5-flash" => (0.30, 2.50),
-        "gemini-2.5-flash-lite" => (0.10, 0.40),
-        // Gemini 2.0
-        "gemini-2.0-flash" => (0.10, 0.40),
+        // Gemini 2.0 (저렴)
         "gemini-2.0-flash-lite" => (0.075, 0.30),
+        "gemini-2.0-flash" => (0.10, 0.40),
+        // Gemini 2.5
+        "gemini-2.5-flash-lite" => (0.10, 0.40),
+        "gemini-2.5-flash" => (0.30, 2.50),
+        "gemini-2.5-pro" => (1.25, 10.00),
+        // Gemini 3
+        "gemini-3-flash-preview" => (0.50, 3.00),
+        "gemini-3-pro-preview" => (2.00, 12.00),
         _ => (INPUT_PRICE_PER_M, OUTPUT_PRICE_PER_M),
     }
 }

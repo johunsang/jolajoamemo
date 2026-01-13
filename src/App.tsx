@@ -98,18 +98,17 @@ function App() {
   const [_opacity, setOpacity] = useState(100);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [aiModel, setAiModel] = useState("gemini-3-flash-preview");
+  const [aiModel, setAiModel] = useState("gemini-2.0-flash-lite");
 
-  // 사용 가능한 AI 모델 목록
+  // 사용 가능한 AI 모델 목록 (저렴한 순)
   const availableModels = [
-    { id: "gemini-3-pro-preview", name: "Gemini 3 Pro (최강)" },
-    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (추천)" },
-    { id: "gemini-3-pro-image-preview", name: "Gemini 3 Pro Image" },
-    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (고성능)" },
-    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (균형)" },
+    { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite (기본/최저가)" },
+    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" },
     { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
-    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash (저렴)" },
-    { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite (최저가)" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (균형)" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (고성능)" },
+    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (속도+성능)" },
+    { id: "gemini-3-pro-preview", name: "Gemini 3 Pro (최강)" },
   ];
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -908,7 +907,7 @@ function App() {
                   {availableModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
                 <div className="mt-2" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
-                  3.x = 최신/강력 | 2.5 = 균형 | 2.0 = 저렴
+                  2.0 = 저렴 | 2.5 = 균형 | 3.x = 최신/강력
                 </div>
               </div>
 
