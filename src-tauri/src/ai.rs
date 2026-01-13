@@ -303,6 +303,7 @@ pub async fn analyze_multi_memo(
     model: &str,
     content: &str,
     existing_memos: &[(i64, String, String)],
+    existing_categories: &[String],
 ) -> Result<(Vec<AnalysisResult>, TokenUsage), String> {
     let model = if model.is_empty() { DEFAULT_MODEL } else { model };
     let client = Client::new();
@@ -316,6 +317,12 @@ pub async fn analyze_multi_memo(
             .map(|(id, title, summary)| format!("ID:{} - {} ({})", id, title, summary))
             .collect::<Vec<_>>()
             .join("\n")
+    };
+
+    let categories_info = if existing_categories.is_empty() {
+        "없음 (새로 생성 가능)".to_string()
+    } else {
+        existing_categories.join(", ")
     };
 
     // 현재 날짜/시간 가져오기
@@ -342,6 +349,9 @@ pub async fn analyze_multi_memo(
 ## 기존 메모 목록:
 {}
 
+## 기존 카테고리 목록:
+{}
+
 ## 중요 작업:
 
 ### 1. 텍스트 분리 (너무 잘게 쪼개지 마!)
@@ -351,11 +361,12 @@ pub async fn analyze_multi_memo(
 - **완전히 다른 주제**일 때만 분리 (예: 연락처 + 아이디어 = 2개)
 - 관련된 내용은 절대 쪼개지 말고 하나로!
 
-### 2. 스마트 분류 (AI 자율 판단)
-- 카테고리를 너가 내용을 보고 직접 만들어
-- 간결하고 직관적인 한국어 카테고리명 사용 (2~4글자)
-- 예: 연락처, 회의록, 아이디어, 코드, 요리, 여행, 건강, 쇼핑, 공부, 일기 등
-- 내용에 가장 적합한 카테고리를 자유롭게 생성해
+### 2. 카테고리 분류 (기존 카테고리 최우선 재활용!)
+- **위의 "기존 카테고리 목록"에서 가장 적합한 것을 선택**하세요
+- 기존 카테고리 중 비슷한 의미가 있으면 **반드시** 그것을 사용
+- 새 카테고리는 기존 카테고리 중 어떤 것도 맞지 않을 때만 생성
+- 카테고리명은 간결하게 2~4글자 한국어로
+- 너무 세분화하지 말고 큰 분류로 묶기
 
 ### 3. 병합 규칙 (중요!)
 - 같은 사람의 연락처가 있으면 → 병합 (정보 추가)
@@ -415,7 +426,7 @@ pub async fn analyze_multi_memo(
 
 일정/할일이 없으면 각각 빈 배열 []로 두세요.
 하나의 주제만 있으면 items에 1개만 넣으세요."#,
-        current_datetime, current_weekday, content, existing_info
+        current_datetime, current_weekday, content, existing_info, categories_info
     );
 
     let response = client

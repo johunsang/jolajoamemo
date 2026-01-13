@@ -436,3 +436,96 @@ pub fn delete_todo(id: i64) -> Result<()> {
     conn.execute("DELETE FROM todos WHERE id = ?1", params![id])?;
     Ok(())
 }
+
+// ===== 페이징 관련 함수 =====
+
+// 메모 페이징 조회
+pub fn get_memos_paginated(offset: i64, limit: i64) -> Result<Vec<Memo>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, title, content, formatted_content, summary, category, tags, embedding, created_at, updated_at
+         FROM memos ORDER BY updated_at DESC LIMIT ?1 OFFSET ?2"
+    )?;
+
+    let memos = stmt.query_map([limit, offset], |row| {
+        Ok(Memo {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            content: row.get(2)?,
+            formatted_content: row.get(3)?,
+            summary: row.get(4)?,
+            category: row.get(5)?,
+            tags: row.get(6)?,
+            embedding: row.get(7)?,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(memos)
+}
+
+// 전체 메모 개수
+pub fn get_memo_count() -> Result<i64> {
+    let conn = get_db().lock();
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM memos", [], |row| row.get(0))?;
+    Ok(count)
+}
+
+// 기존 카테고리 목록 조회 (중복 제거)
+pub fn get_all_categories() -> Result<Vec<String>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT category FROM memos WHERE category != '' ORDER BY category"
+    )?;
+
+    let categories = stmt.query_map([], |row| {
+        row.get::<_, String>(0)
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(categories)
+}
+
+// 테스트 데이터 삽입
+pub fn insert_test_memos(count: i64) -> Result<i64> {
+    let conn = get_db().lock();
+
+    // 표준 카테고리 목록 사용
+    let categories = ["업무", "개인", "아이디어", "회의록", "학습", "연락처", "쇼핑", "여행", "건강", "기타"];
+    let tags_list = [
+        "중요, 긴급",
+        "나중에, 참고",
+        "아이디어, 브레인스토밍",
+        "회의, 팀",
+        "공부, 기술",
+        "연락처, 사람",
+        "쇼핑, 구매",
+        "여행, 휴가",
+        "운동, 건강",
+        "기타, 메모",
+    ];
+
+    for i in 0..count {
+        let cat_idx = (i as usize) % categories.len();
+        let title = format!("테스트 메모 #{}", i + 1);
+        let content = format!(
+            "이것은 테스트 메모 {}번입니다.\n\n오늘의 할일:\n- 첫 번째 할일\n- 두 번째 할일\n- 세 번째 할일\n\n이 메모는 무한 스크롤 테스트를 위해 생성되었습니다.",
+            i + 1
+        );
+
+        conn.execute(
+            "INSERT INTO memos (title, content, formatted_content, summary, category, tags)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                title,
+                content,
+                content,
+                format!("테스트 메모 {} 요약", i + 1),
+                categories[cat_idx],
+                tags_list[cat_idx]
+            ],
+        )?;
+    }
+
+    Ok(count)
+}

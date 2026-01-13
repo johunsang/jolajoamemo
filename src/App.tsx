@@ -100,6 +100,15 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [aiModel, setAiModel] = useState("gemini-3-flash-preview");
 
+  // 무한 스크롤 관련 상태
+  const [memoOffset, setMemoOffset] = useState(0);
+  const [hasMoreMemos, setHasMoreMemos] = useState(true);
+  const [loadingMoreMemos, setLoadingMoreMemos] = useState(false);
+  const [totalMemoCount, setTotalMemoCount] = useState(0);
+  const MEMO_PAGE_SIZE = 30;
+  const memoListRef = useRef<HTMLDivElement>(null);
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
+
   // 사용 가능한 AI 모델 목록
   const availableModels = [
     { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (기본/추천)" },
@@ -267,14 +276,56 @@ function App() {
     try { setUsage(await invoke<UsageStats>("get_usage")); } catch (e) { console.error(e); }
   };
 
-  const loadMemos = async () => {
+  const loadMemos = async (reset = true) => {
     try {
-      const list = await invoke<Memo[]>("get_memos");
-      setMemos(list);
-      // 카테고리 기본 닫힘 상태
-      setExpandedCategories(new Set());
+      if (reset) {
+        // 처음부터 로드
+        const list = await invoke<Memo[]>("get_memos_paginated", { offset: 0, limit: MEMO_PAGE_SIZE });
+        const count = await invoke<number>("get_memo_count");
+        setMemos(list);
+        setTotalMemoCount(count);
+        setMemoOffset(MEMO_PAGE_SIZE);
+        setHasMoreMemos(list.length < count);
+        setExpandedCategories(new Set());
+      }
     } catch (e) { console.error(e); }
   };
+
+  // 더 많은 메모 로드 (무한 스크롤)
+  const loadMoreMemos = useCallback(async () => {
+    if (loadingMoreMemos || !hasMoreMemos) return;
+
+    setLoadingMoreMemos(true);
+    try {
+      const list = await invoke<Memo[]>("get_memos_paginated", { offset: memoOffset, limit: MEMO_PAGE_SIZE });
+      if (list.length > 0) {
+        setMemos(prev => [...prev, ...list]);
+        setMemoOffset(prev => prev + MEMO_PAGE_SIZE);
+        setHasMoreMemos(memoOffset + list.length < totalMemoCount);
+      } else {
+        setHasMoreMemos(false);
+      }
+    } catch (e) { console.error(e); }
+    setLoadingMoreMemos(false);
+  }, [loadingMoreMemos, hasMoreMemos, memoOffset, totalMemoCount]);
+
+  // 무한 스크롤 IntersectionObserver
+  useEffect(() => {
+    if (!loadMoreTriggerRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreMemos && !loadingMoreMemos) {
+          loadMoreMemos();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(loadMoreTriggerRef.current);
+
+    return () => observer.disconnect();
+  }, [hasMoreMemos, loadingMoreMemos, loadMoreMemos]);
 
   const loadSchedules = async () => {
     try {
@@ -644,7 +695,7 @@ function App() {
         {sidebarOpen && (
         <div className="w-44 flex flex-col overflow-hidden" style={{ borderRight: '2px solid var(--color-border)' }}>
           <div className="px-2 py-1 flex justify-between items-center" style={{ borderBottom: '1px solid var(--color-border)' }}>
-            <p className="section-label">MEMOS ({memos.length})</p>
+            <p className="section-label">MEMOS ({memos.length}/{totalMemoCount})</p>
             <button
               onClick={() => {
                 if (expandedCategories.size > 0) {
@@ -660,13 +711,33 @@ function App() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-2" ref={memoListRef}>
             {Object.keys(categoryTree.children).length === 0 ? (
               <div className="p-4 text-center" style={{ border: '2px dashed var(--color-text-muted)' }}>
                 <p style={{ color: 'var(--color-text-muted)' }} className="text-xs uppercase">No memos yet</p>
               </div>
             ) : (
-              renderCategoryNode(categoryTree)
+              <>
+                {renderCategoryNode(categoryTree)}
+                {/* 무한 스크롤 트리거 */}
+                <div ref={loadMoreTriggerRef} className="py-4 text-center" style={{ minHeight: '50px' }}>
+                  {hasMoreMemos ? (
+                    loadingMoreMemos ? (
+                      <span className="text-xs" style={{ color: 'var(--color-accent)' }}>로딩중...</span>
+                    ) : (
+                      <button
+                        onClick={loadMoreMemos}
+                        className="text-xs px-2 py-1"
+                        style={{ color: 'var(--color-accent)', border: '1px dashed var(--color-accent)' }}
+                      >
+                        ↓ 더보기 ({memos.length}/{totalMemoCount})
+                      </button>
+                    )
+                  ) : (
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>- 끝 -</span>
+                  )}
+                </div>
+              </>
             )}
           </div>
 
@@ -986,7 +1057,7 @@ function App() {
                 <div className="card flex-1" style={{ padding: '8px' }}>
                   <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>DANGER</div>
                   <button onClick={deleteAllMemos} className="btn btn-danger w-full" style={{ padding: '4px 8px', fontSize: '10px' }}>
-                    DELETE_ALL ({memos.length})
+                    DELETE_ALL ({totalMemoCount})
                   </button>
                 </div>
               </div>

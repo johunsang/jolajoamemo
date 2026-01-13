@@ -52,8 +52,11 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
         .map(|m| (m.id, m.title.clone(), m.summary.clone()))
         .collect();
 
+    // 기존 카테고리 목록 가져오기
+    let existing_categories = db::get_all_categories().map_err(|e| e.to_string())?;
+
     // AI 분석 (여러 개 자동 분리)
-    let (items, usage) = ai::analyze_multi_memo(&api_key, &model, &content, &memo_info).await?;
+    let (items, usage) = ai::analyze_multi_memo(&api_key, &model, &content, &memo_info, &existing_categories).await?;
 
     // 사용량 기록
     let model_name = if model.is_empty() { "gemini-3-flash-preview" } else { &model };
@@ -348,6 +351,19 @@ fn delete_todo(id: i64) -> Result<(), String> {
     db::delete_todo(id).map_err(|e| e.to_string())
 }
 
+// 메모 페이징 조회
+#[tauri::command]
+fn get_memos_paginated(offset: i64, limit: i64) -> Result<Vec<Memo>, String> {
+    db::get_memos_paginated(offset, limit).map_err(|e| e.to_string())
+}
+
+// 메모 총 개수
+#[tauri::command]
+fn get_memo_count() -> Result<i64, String> {
+    db::get_memo_count().map_err(|e| e.to_string())
+}
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -361,6 +377,8 @@ pub fn run() {
             input_memo,
             search_memo,
             get_memos,
+            get_memos_paginated,
+            get_memo_count,
             save_setting,
             get_setting,
             get_usage,
