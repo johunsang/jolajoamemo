@@ -95,7 +95,7 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body: string; showDetails?: boolean } | null>(null);
   const [updating, setUpdating] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
-  const [opacity, setOpacity] = useState(100);
+  const [_opacity, setOpacity] = useState(100);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -246,14 +246,6 @@ function App() {
       const win = getCurrentWindow();
       await win.setAlwaysOnTop(newVal);
       await invoke("save_setting", { key: "always_on_top", value: newVal.toString() });
-    } catch (e) { console.error(e); }
-  };
-
-  const changeOpacity = async (val: number) => {
-    setOpacity(val);
-    try {
-      document.body.style.opacity = `${val / 100}`;
-      await invoke("save_setting", { key: "opacity", value: val.toString() });
     } catch (e) { console.error(e); }
   };
 
