@@ -67,7 +67,7 @@ function App() {
   const [draggedMemo, setDraggedMemo] = useState<Memo | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
-  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body: string } | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body: string; showDetails?: boolean } | null>(null);
   const [updating, setUpdating] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -440,18 +440,36 @@ function App() {
 
       {/* ===== UPDATE BANNER ===== */}
       {updateAvailable && (
-        <div className="flex items-center justify-between px-6 py-3" style={{ background: 'var(--color-accent)', color: '#ffffff' }}>
-          <span className="font-bold uppercase">
-            NEW VERSION {updateAvailable.version} AVAILABLE
-          </span>
-          <button
-            onClick={installUpdate}
-            disabled={updating}
-            className="px-4 py-2 font-bold uppercase"
-            style={{ background: '#ffffff', color: 'var(--color-accent)', border: 'none' }}
-          >
-            {updating ? 'UPDATING...' : 'UPDATE NOW'}
-          </button>
+        <div style={{ background: 'var(--color-accent)', color: '#ffffff' }}>
+          <div className="flex items-center justify-between px-6 py-3">
+            <span className="font-bold uppercase">
+              NEW VERSION {updateAvailable.version} AVAILABLE
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setUpdateAvailable(prev => prev ? { ...prev, showDetails: !prev.showDetails } : null)}
+                className="px-4 py-2 font-bold uppercase"
+                style={{ background: 'transparent', color: '#ffffff', border: '2px solid #ffffff' }}
+              >
+                {updateAvailable.showDetails ? 'HIDE' : "WHAT'S NEW"}
+              </button>
+              <button
+                onClick={installUpdate}
+                disabled={updating}
+                className="px-4 py-2 font-bold uppercase"
+                style={{ background: '#ffffff', color: 'var(--color-accent)', border: 'none' }}
+              >
+                {updating ? 'UPDATING...' : 'UPDATE NOW'}
+              </button>
+            </div>
+          </div>
+          {updateAvailable.showDetails && updateAvailable.body && (
+            <div className="px-6 pb-4">
+              <div className="p-4 text-sm" style={{ background: 'rgba(0,0,0,0.2)', maxHeight: '200px', overflowY: 'auto' }}>
+                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{updateAvailable.body}</pre>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
