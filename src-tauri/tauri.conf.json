@@ -33,7 +33,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": "v2"
   },
   "plugins": {
     "updater": {
