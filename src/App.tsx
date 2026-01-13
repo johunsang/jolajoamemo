@@ -391,13 +391,18 @@ function App() {
 
   const handleInput = async () => {
     if (!inputText.trim()) return;
+    const savedText = inputText; // 저장 전 백업
     setLoading(true); setError(null); setResult(null);
     try {
-      const res = await invoke<InputResult>("input_memo", { content: inputText });
+      const res = await invoke<InputResult>("input_memo", { content: savedText });
       setResult(res.message);
-      setInputText("");
+      setInputText(""); // 성공 시에만 초기화
       loadUsage(); loadMemos(); loadSchedules(); loadTodos();
-    } catch (e) { setError(String(e)); }
+    } catch (e) {
+      setError(String(e));
+      // 에러 발생 시 입력 내용 복원 (혹시 사라졌을 경우)
+      if (!inputText) setInputText(savedText);
+    }
     finally { setLoading(false); }
   };
 

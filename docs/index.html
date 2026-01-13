@@ -580,6 +580,111 @@
     </div>
   </section>
 
+  <!-- 보안 섹션 -->
+  <section class="security" style="padding: 100px 0; border-bottom: 1px solid rgba(255,255,255,0.1); background: linear-gradient(180deg, #000 0%, #0a1a0a 50%, #000 100%);">
+    <div class="container">
+      <div style="text-align: center; margin-bottom: 48px;">
+        <div style="display: inline-block; background: #00ff00; color: #000; padding: 8px 20px; font-size: 14px; font-weight: 700; margin-bottom: 16px;">보안 최우선</div>
+        <h2 style="font-size: clamp(28px, 5vw, 48px); font-weight: 700; margin-bottom: 16px;">니 개인정보?<br>AI한테 안 보내</h2>
+        <p style="color: rgba(255,255,255,0.6); max-width: 600px; margin: 0 auto; line-height: 1.8;">
+          민감한 정보는 <strong style="color: #00ff00;">자동으로 마스킹</strong> 처리해서 AI한테 보냄.<br>
+          원본은 니 컴퓨터에만 저장됨. 걱정 마 ㅋㅋ
+        </p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 48px;">
+        <div style="background: #111; border: 2px solid #00ff00; padding: 24px;">
+          <div style="font-size: 32px; margin-bottom: 12px;">🔐</div>
+          <h3 style="font-size: 16px; margin-bottom: 12px; color: #00ff00;">비밀번호 & API 키</h3>
+          <p style="color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6;">
+            비번이나 API 키 메모해도 OK<br>
+            AI한테는 [비밀번호_1] 이렇게 보냄
+          </p>
+        </div>
+        <div style="background: #111; border: 2px solid #00ff00; padding: 24px;">
+          <div style="font-size: 32px; margin-bottom: 12px;">📱</div>
+          <h3 style="font-size: 16px; margin-bottom: 12px; color: #00ff00;">전화번호 & 이메일</h3>
+          <p style="color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6;">
+            연락처 저장해도 안심<br>
+            AI는 [전화번호_1], [이메일_1]만 봄
+          </p>
+        </div>
+        <div style="background: #111; border: 2px solid #00ff00; padding: 24px;">
+          <div style="font-size: 32px; margin-bottom: 12px;">💳</div>
+          <h3 style="font-size: 16px; margin-bottom: 12px; color: #00ff00;">카드번호 & 계좌</h3>
+          <p style="color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6;">
+            금융정보도 자동 보호<br>
+            AI는 [카드번호_1], [계좌번호_1]만 봄
+          </p>
+        </div>
+        <div style="background: #111; border: 2px solid #00ff00; padding: 24px;">
+          <div style="font-size: 32px; margin-bottom: 12px;">🏠</div>
+          <h3 style="font-size: 16px; margin-bottom: 12px; color: #00ff00;">주민번호 & 주소</h3>
+          <p style="color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6;">
+            신상정보 완벽 보호<br>
+            AI는 [주민번호_1], [주소_1]만 봄
+          </p>
+        </div>
+      </div>
+
+      <!-- 마스킹 예시 -->
+      <div style="background: #0a0a0a; border: 2px solid #333; padding: 32px; max-width: 800px; margin: 0 auto;">
+        <h3 style="font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 24px; letter-spacing: 2px;">> 이렇게 작동함</h3>
+
+        <div style="margin-bottom: 24px;">
+          <p style="color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 8px;">니가 입력한 거:</p>
+          <div style="background: #1a1a1a; border-left: 4px solid #ff0000; padding: 16px; font-size: 14px; color: rgba(255,255,255,0.8);">
+            김철수 연락처<br>
+            전화: 010-1234-5678<br>
+            이메일: kim@gmail.com<br>
+            계좌: 110-123-456789 (국민)
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span style="color: #00ff00; font-size: 24px;">↓</span>
+          <span style="color: rgba(255,255,255,0.4); font-size: 12px; margin-left: 8px;">자동 마스킹</span>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+          <p style="color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 8px;">AI가 보는 거:</p>
+          <div style="background: #1a1a1a; border-left: 4px solid #00ff00; padding: 16px; font-size: 14px; color: rgba(255,255,255,0.8);">
+            김철수 연락처<br>
+            전화: <span style="color: #00ff00;">[전화번호_1]</span><br>
+            이메일: <span style="color: #00ff00;">[이메일_1]</span><br>
+            계좌: <span style="color: #00ff00;">[계좌번호_1]</span> (국민)
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span style="color: #00ff00; font-size: 24px;">↓</span>
+          <span style="color: rgba(255,255,255,0.4); font-size: 12px; margin-left: 8px;">AI 정리 후 복원</span>
+        </div>
+
+        <div>
+          <p style="color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 8px;">저장되는 거:</p>
+          <div style="background: #1a1a1a; border-left: 4px solid #5555ff; padding: 16px; font-size: 14px; color: rgba(255,255,255,0.8);">
+            <strong>김철수 연락처</strong><br>
+            전화: 010-1234-5678<br>
+            이메일: kim@gmail.com<br>
+            계좌: 110-123-456789 (국민)
+          </div>
+        </div>
+
+        <p style="color: rgba(255,255,255,0.4); font-size: 12px; margin-top: 24px; text-align: center;">
+          * 원본 데이터는 니 컴퓨터에만 저장됨. AI 서버에는 마스킹된 것만 감.
+        </p>
+      </div>
+
+      <div style="text-align: center; margin-top: 48px;">
+        <p style="color: rgba(255,255,255,0.5); font-size: 14px; line-height: 1.8;">
+          <strong style="color: #00ff00;">오픈소스</strong>라서 코드 다 공개됨.<br>
+          의심되면 직접 확인해: <a href="https://github.com/johunsang/jolajoamemo/blob/main/src-tauri/src/ai.rs" target="_blank" style="color: #5555ff;">마스킹 코드 보기</a>
+        </p>
+      </div>
+    </div>
+  </section>
+
   <section class="tech">
     <div class="container">
       <div class="tech-grid">

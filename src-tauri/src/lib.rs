@@ -109,11 +109,11 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
                 titles.push(format!("{}(병합)", existing.title));
             }
         } else {
-            // 새 메모 저장
+            // 새 메모 저장 (원본 입력 그대로 저장)
             let new_memo = Memo {
                 id: 0,
                 title: analysis.title.clone(),
-                content: content.clone(),
+                content: content.clone(),  // 사용자 입력 원본 그대로 저장
                 formatted_content: analysis.formatted_content,
                 summary: analysis.summary,
                 category: analysis.category,

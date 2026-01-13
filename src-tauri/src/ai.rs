@@ -1,4 +1,5 @@
 use chrono::Datelike;
+use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -126,6 +127,120 @@ pub fn calculate_cost(model: &str, input_tokens: i64, output_tokens: i64) -> f64
     let (input_price, output_price) = get_model_price(model);
     (input_tokens as f64 * input_price / 1_000_000.0)
         + (output_tokens as f64 * output_price / 1_000_000.0)
+}
+
+/// 민감 정보 마스킹 결과 (마스킹된 텍스트 + 복원용 매핑)
+pub struct MaskResult {
+    pub masked: String,
+    pub mappings: Vec<(String, String)>, // (마스킹 토큰, 원본 값)
+}
+
+/// 민감 정보 마스킹 (AI에게 보낼 때 사용, 복원용 매핑도 반환)
+pub fn mask_sensitive_info(text: &str) -> MaskResult {
+    let mut masked = text.to_string();
+    let mut mappings: Vec<(String, String)> = Vec::new();
+    let mut counter = 0;
+
+    // 고유 토큰 생성 함수
+    let mut make_token = |label: &str, original: &str| -> String {
+        counter += 1;
+        let token = format!("[{}_{}]", label, counter);
+        mappings.push((token.clone(), original.to_string()));
+        token
+    };
+
+    // 1. API 키 패턴 (Google, OpenAI, AWS 등)
+    let api_patterns = [
+        r"AIza[0-9A-Za-z_-]{35}",
+        r"sk-[0-9A-Za-z]{48}",
+        r"sk-proj-[0-9A-Za-z_-]{100,}",
+        r"AKIA[0-9A-Z]{16}",
+        r"ghp_[0-9A-Za-z]{36}",
+        r"glpat-[0-9A-Za-z_-]{20}",
+    ];
+    for pattern in api_patterns {
+        if let Ok(re) = Regex::new(pattern) {
+            let matches: Vec<String> = re.find_iter(&masked).map(|m| m.as_str().to_string()).collect();
+            for m in matches {
+                let token = make_token("API키", &m);
+                masked = masked.replacen(&m, &token, 1);
+            }
+        }
+    }
+
+    // 2. 주민등록번호 (000000-0000000)
+    if let Ok(re) = Regex::new(r"\d{6}[-\s]?\d{7}") {
+        let matches: Vec<String> = re.find_iter(&masked).map(|m| m.as_str().to_string()).collect();
+        for m in matches {
+            let token = make_token("주민번호", &m);
+            masked = masked.replacen(&m, &token, 1);
+        }
+    }
+
+    // 3. 전화번호 (010-0000-0000, 02-000-0000 등)
+    if let Ok(re) = Regex::new(r"0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}") {
+        let matches: Vec<String> = re.find_iter(&masked).map(|m| m.as_str().to_string()).collect();
+        for m in matches {
+            let token = make_token("전화번호", &m);
+            masked = masked.replacen(&m, &token, 1);
+        }
+    }
+
+    // 4. 이메일 주소
+    if let Ok(re) = Regex::new(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") {
+        let matches: Vec<String> = re.find_iter(&masked).map(|m| m.as_str().to_string()).collect();
+        for m in matches {
+            let token = make_token("이메일", &m);
+            masked = masked.replacen(&m, &token, 1);
+        }
+    }
+
+    // 5. 신용카드 번호 (0000-0000-0000-0000)
+    if let Ok(re) = Regex::new(r"\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}") {
+        let matches: Vec<String> = re.find_iter(&masked).map(|m| m.as_str().to_string()).collect();
+        for m in matches {
+            let token = make_token("카드번호", &m);
+            masked = masked.replacen(&m, &token, 1);
+        }
+    }
+
+    // 6. 계좌번호 (은행명 + 숫자)
+    if let Ok(re) = Regex::new(r"(?:국민|신한|우리|하나|농협|기업|SC|씨티|케이뱅크|카카오|토스).{0,5}\d{10,14}") {
+        let matches: Vec<String> = re.find_iter(&masked).map(|m| m.as_str().to_string()).collect();
+        for m in matches {
+            let token = make_token("계좌번호", &m);
+            masked = masked.replacen(&m, &token, 1);
+        }
+    }
+
+    // 7. 도로명 주소
+    if let Ok(re) = Regex::new(r"(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)(?:특별시|광역시|특별자치시|도|특별자치도)?\s*[가-힣]+(?:시|군|구)\s*[가-힣0-9]+(?:로|길|동|읍|면)\s*[\d\-가-힣\s]*") {
+        let matches: Vec<String> = re.find_iter(&masked).map(|m| m.as_str().to_string()).collect();
+        for m in matches {
+            let token = make_token("주소", &m);
+            masked = masked.replacen(&m, &token, 1);
+        }
+    }
+
+    // 8. 비밀번호 패턴
+    if let Ok(re) = Regex::new(r"(?i)(?:password|비밀번호|비번|pw|암호)\s*[:=]\s*\S+") {
+        let matches: Vec<String> = re.find_iter(&masked).map(|m| m.as_str().to_string()).collect();
+        for m in matches {
+            let token = make_token("비밀번호", &m);
+            masked = masked.replacen(&m, &token, 1);
+        }
+    }
+
+    MaskResult { masked, mappings }
+}
+
+/// 마스킹된 텍스트를 원본으로 복원
+pub fn unmask_text(masked_text: &str, mappings: &[(String, String)]) -> String {
+    let mut result = masked_text.to_string();
+    for (token, original) in mappings {
+        result = result.replace(token, original);
+    }
+    result
 }
 
 // 메모 분석 (제목, 포맷팅, 요약, 카테고리, 태그 추출)
@@ -307,6 +422,10 @@ pub async fn analyze_multi_memo(
     let model = if model.is_empty() { DEFAULT_MODEL } else { model };
     let client = Client::new();
 
+    // 민감 정보 마스킹 (AI에게 보낼 때만)
+    let mask_result = mask_sensitive_info(content);
+    let masked_content = &mask_result.masked;
+
     let existing_info = if existing_memos.is_empty() {
         "없음".to_string()
     } else {
@@ -425,7 +544,7 @@ pub async fn analyze_multi_memo(
 
 일정/할일이 없으면 각각 빈 배열 []로 두세요.
 하나의 주제만 있으면 items에 1개만 넣으세요."#,
-        current_datetime, current_weekday, content, existing_info, categories_info
+        current_datetime, current_weekday, masked_content, existing_info, categories_info
     );
 
     let response = client
@@ -464,13 +583,33 @@ pub async fn analyze_multi_memo(
     let multi_result: MultiAnalysisResult = serde_json::from_str(&text)
         .map_err(|e| format!("JSON 파싱 실패: {} - 원본: {}", e, text))?;
 
+    // 마스킹된 민감 정보 복원
+    let restored_items: Vec<AnalysisResult> = multi_result.items.into_iter().map(|mut item| {
+        item.title = unmask_text(&item.title, &mask_result.mappings);
+        item.formatted_content = unmask_text(&item.formatted_content, &mask_result.mappings);
+        item.summary = unmask_text(&item.summary, &mask_result.mappings);
+        item.tags = item.tags.into_iter().map(|t| unmask_text(&t, &mask_result.mappings)).collect();
+        // 일정과 할일도 복원
+        item.schedules = item.schedules.into_iter().map(|mut s| {
+            s.title = unmask_text(&s.title, &mask_result.mappings);
+            s.location = s.location.map(|l| unmask_text(&l, &mask_result.mappings));
+            s.description = s.description.map(|d| unmask_text(&d, &mask_result.mappings));
+            s
+        }).collect();
+        item.todos = item.todos.into_iter().map(|mut t| {
+            t.title = unmask_text(&t.title, &mask_result.mappings);
+            t
+        }).collect();
+        item
+    }).collect();
+
     let token_usage = TokenUsage {
         input_tokens: usage.prompt_token_count,
         output_tokens: usage.candidates_token_count,
         cost_usd: calculate_cost(model, usage.prompt_token_count, usage.candidates_token_count),
     };
 
-    Ok((multi_result.items, token_usage))
+    Ok((restored_items, token_usage))
 }
 
 // 임베딩 생성
