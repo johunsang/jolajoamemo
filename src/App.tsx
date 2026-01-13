@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useTranslation } from "react-i18next";
@@ -69,6 +70,8 @@ function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body: string; showDetails?: boolean } | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [opacity, setOpacity] = useState(100);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -176,9 +179,21 @@ function App() {
       const key = await invoke<string>("get_setting", { key: "gemini_api_key" });
       const lang = await invoke<string>("get_setting", { key: "language" });
       const dark = await invoke<string>("get_setting", { key: "dark_mode" });
+      const aot = await invoke<string>("get_setting", { key: "always_on_top" });
+      const op = await invoke<string>("get_setting", { key: "opacity" });
       setApiKey(key);
       if (lang) { setLanguage(lang); i18n.changeLanguage(lang); }
       if (dark === "true") setDarkMode(true);
+      if (aot === "true") {
+        setAlwaysOnTop(true);
+        const win = getCurrentWindow();
+        win.setAlwaysOnTop(true);
+      }
+      if (op) {
+        const opVal = parseInt(op);
+        setOpacity(opVal);
+        document.body.style.opacity = `${opVal / 100}`;
+      }
     } catch (e) { console.error(e); }
   };
 
@@ -187,6 +202,24 @@ function App() {
     setDarkMode(newMode);
     try {
       await invoke("save_setting", { key: "dark_mode", value: newMode.toString() });
+    } catch (e) { console.error(e); }
+  };
+
+  const toggleAlwaysOnTop = async () => {
+    const newVal = !alwaysOnTop;
+    setAlwaysOnTop(newVal);
+    try {
+      const win = getCurrentWindow();
+      await win.setAlwaysOnTop(newVal);
+      await invoke("save_setting", { key: "always_on_top", value: newVal.toString() });
+    } catch (e) { console.error(e); }
+  };
+
+  const changeOpacity = async (val: number) => {
+    setOpacity(val);
+    try {
+      document.body.style.opacity = `${val / 100}`;
+      await invoke("save_setting", { key: "opacity", value: val.toString() });
     } catch (e) { console.error(e); }
   };
 
@@ -406,10 +439,10 @@ function App() {
   return (
     <div className="h-screen flex flex-col" style={{ background: 'var(--color-bg)' }}>
       {/* ===== TOP NAV BAR ===== */}
-      <div className="h-20 flex items-center justify-between px-6" style={{ borderBottom: '3px solid var(--color-border)', background: 'var(--color-text)', color: 'var(--color-bg)' }}>
-        <h1 className="text-xl font-bold uppercase tracking-wide ml-4">{t("app.title")}</h1>
+      <div className="h-12 flex items-center justify-between px-4" style={{ borderBottom: '2px solid var(--color-border)', background: 'var(--color-text)', color: 'var(--color-bg)' }}>
+        <h1 className="text-sm font-bold uppercase tracking-wide">{t("app.title")}</h1>
 
-        <nav className="flex gap-4">
+        <nav className="flex gap-2">
           {[
             { id: "input" as Tab, label: t("nav.newMemo") },
             { id: "search" as Tab, label: t("nav.search") },
@@ -418,31 +451,31 @@ function App() {
             <button
               key={item.id}
               onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
-              className={`px-8 py-4 text-lg font-bold uppercase ${
+              className={`px-4 py-2 text-xs font-bold uppercase ${
                 tab === item.id && !selectedMemo
                   ? 'bg-[var(--color-bg)] text-[var(--color-text)]'
                   : 'hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text)]'
               }`}
-              style={{ border: '3px solid var(--color-bg)' }}
+              style={{ border: '2px solid var(--color-bg)' }}
             >
               [{item.id.toUpperCase()}]
             </button>
           ))}
         </nav>
 
-        <div className="flex items-center gap-4">
-          {saving && <span className="text-sm opacity-70">(SAVING...)</span>}
+        <div className="flex items-center gap-2">
+          {saving && <span className="text-xs opacity-70">(SAVING...)</span>}
           <a
             href="https://github.com/johunsang/jolajoamemo/issues"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-5 py-2 text-base font-bold uppercase"
+            className="px-3 py-1 text-xs font-bold uppercase"
             style={{ border: '2px solid #ff0000', color: '#ff0000', textDecoration: 'none' }}
           >
             FEEDBACK
           </a>
-          <button onClick={toggleDarkMode} className="px-5 py-2 text-base font-bold uppercase" style={{ border: '2px solid var(--color-bg)' }}>
-            {darkMode ? '☀ LIGHT' : '☾ DARK'}
+          <button onClick={toggleDarkMode} className="px-3 py-1 text-xs font-bold uppercase" style={{ border: '2px solid var(--color-bg)' }}>
+            {darkMode ? '☀' : '☾'}
           </button>
         </div>
       </div>
@@ -485,12 +518,12 @@ function App() {
       {/* ===== MAIN LAYOUT ===== */}
       <div className="flex-1 flex overflow-hidden">
         {/* ===== LEFT SIDEBAR (카테고리) ===== */}
-        <div className="w-64 flex flex-col overflow-hidden" style={{ borderRight: '3px solid var(--color-border)' }}>
-          <div className="p-4" style={{ borderBottom: '2px solid var(--color-border)' }}>
-            <p className="section-label">CATEGORIES ({memos.length})</p>
+        <div className="w-48 flex flex-col overflow-hidden" style={{ borderRight: '2px solid var(--color-border)' }}>
+          <div className="px-2 py-1" style={{ borderBottom: '1px solid var(--color-border)' }}>
+            <p className="section-label">MEMOS ({memos.length})</p>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-2">
             {Object.keys(categoryTree.children).length === 0 ? (
               <div className="p-4 text-center" style={{ border: '2px dashed var(--color-text-muted)' }}>
                 <p style={{ color: 'var(--color-text-muted)' }} className="text-xs uppercase">No memos yet</p>
@@ -501,44 +534,37 @@ function App() {
           </div>
 
           {usage && (
-            <div className="p-3 text-xs" style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="px-2 py-1" style={{ borderTop: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', fontSize: '10px' }}>
               <div className="flex justify-between" style={{ color: 'var(--color-text-muted)' }}>
-                <span>TOKENS: {usage.today_input_tokens + usage.today_output_tokens}</span>
-                <span>${usage.today_cost_usd.toFixed(4)}</span>
+                <span>{usage.today_input_tokens + usage.today_output_tokens}tk</span>
+                <span>${usage.today_cost_usd.toFixed(3)}</span>
               </div>
             </div>
           )}
         </div>
 
         {/* ===== MAIN CONTENT ===== */}
-        <div className="flex-1 overflow-auto p-8" style={{ background: 'var(--color-bg-secondary)' }}>
+        <div className="flex-1 overflow-auto p-4" style={{ background: 'var(--color-bg-secondary)' }}>
           {/* ===== NEW MEMO ===== */}
           {tab === "input" && !selectedMemo && (
             <div>
-              <div className="card">
-                <div className="card-header">{t("input.title")}</div>
-                <p className="mb-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>{t("input.description")}</p>
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>{t("input.title")}</div>
                 <textarea
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder={t("input.placeholder")}
-                  className="input h-48 resize-none mb-4"
+                  className="input h-36 resize-none mb-2"
+                  style={{ fontSize: '12px' }}
                   disabled={loading}
                 />
-                <div className="flex items-center gap-4">
-                  <button onClick={handleInput} disabled={loading || !inputText.trim()} className="btn btn-primary">
-                    {loading && <span className="loading-spinner mr-2" />}
+                <div className="flex items-center gap-2">
+                  <button onClick={handleInput} disabled={loading || !inputText.trim()} className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '11px' }}>
+                    {loading && <span className="loading-spinner mr-1" style={{ width: '10px', height: '10px' }} />}
                     {loading ? 'SAVING...' : 'SAVE'}
                   </button>
-                  {loading && (
-                    <span className="status status-warning">SAVING...</span>
-                  )}
-                  {!loading && result && (
-                    <span className="status status-success">SAVED ✓</span>
-                  )}
-                  {!loading && error && (
-                    <span className="status status-error">{error}</span>
-                  )}
+                  {!loading && result && <span className="status status-success" style={{ fontSize: '10px' }}>SAVED ✓</span>}
+                  {!loading && error && <span className="status status-error" style={{ fontSize: '10px' }}>{error}</span>}
                 </div>
               </div>
             </div>
@@ -547,10 +573,9 @@ function App() {
           {/* ===== SEARCH ===== */}
           {tab === "search" && !selectedMemo && (
             <div>
-              <div className="card">
-                <div className="card-header">{t("search.title")}</div>
-                <p className="mb-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>{t("search.description")}</p>
-                <div className="flex gap-3 mb-4">
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>{t("search.title")}</div>
+                <div className="flex gap-2 mb-2">
                   <input
                     type="text"
                     value={searchText}
@@ -558,119 +583,119 @@ function App() {
                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                     placeholder={t("search.placeholder")}
                     className="input flex-1"
+                    style={{ fontSize: '12px', padding: '4px 8px' }}
                     disabled={loading}
                   />
-                  <button onClick={handleSearch} disabled={loading || !searchText.trim()} className="btn btn-primary">
-                    {loading && <span className="loading-spinner mr-2" />}
+                  <button onClick={handleSearch} disabled={loading || !searchText.trim()} className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '11px' }}>
+                    {loading && <span className="loading-spinner mr-1" style={{ width: '10px', height: '10px' }} />}
                     GO
                   </button>
                 </div>
                 {result && (
-                  <div className="code-block mt-4">
-                    <div className="card-header">AI_RESPONSE</div>
-                    <div className="mt-2">{renderMarkdown(result)}</div>
+                  <div className="code-block mt-2" style={{ padding: '8px', fontSize: '12px' }}>
+                    <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>AI_RESPONSE</div>
+                    <div>{renderMarkdown(result)}</div>
                   </div>
                 )}
-                {error && <p className="status status-error mt-4">{error}</p>}
+                {error && <p className="status status-error mt-2" style={{ fontSize: '10px' }}>{error}</p>}
               </div>
             </div>
           )}
 
           {/* ===== SETTINGS ===== */}
           {tab === "settings" && !selectedMemo && (
-            <div className="space-y-6">
-              <div className="card">
-                <div className="card-header">API_KEY</div>
+            <div className="space-y-3">
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>API_KEY</div>
                 <input
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="Enter Gemini API key..."
-                  className="input mb-4"
+                  className="input mb-2"
+                  style={{ fontSize: '11px', padding: '4px 8px' }}
                 />
-                <div className="code-block text-xs">
-                  <p className="font-bold mb-2"># {t("settings.apiKeyGuide")}</p>
-                  <ol className="list-decimal list-inside space-y-1" style={{ color: 'var(--color-text-secondary)' }}>
+                <div className="code-block" style={{ padding: '6px', fontSize: '10px' }}>
+                  <p className="font-bold mb-1"># {t("settings.apiKeyGuide")}</p>
+                  <ol className="list-decimal list-inside space-y-0.5" style={{ color: 'var(--color-text-secondary)' }}>
                     <li>$ open <a href="https://aistudio.google.com/apikey" target="_blank" style={{ color: 'var(--color-accent)' }}>aistudio.google.com/apikey</a></li>
                     <li>$ {t("settings.apiKeyStep2")}</li>
                     <li>$ {t("settings.apiKeyStep3")}</li>
-                    <li>$ {t("settings.apiKeyStep4")}</li>
                   </ol>
                 </div>
               </div>
 
-              <div className="card">
-                <div className="card-header">LANGUAGE</div>
-                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="input">
-                  {languages.map((lang) => <option key={lang.code} value={lang.code}>{lang.name}</option>)}
-                </select>
-              </div>
-
-              <button onClick={handleSaveSettings} className="btn btn-primary w-full">SAVE_SETTINGS</button>
-
-              <div className="card">
-                <div className="card-header">DATA_BACKUP</div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={async () => {
-                      const json = await invoke<string>("export_db");
-                      const a = document.createElement("a");
-                      a.href = URL.createObjectURL(new Blob([json]));
-                      a.download = `jolajoa_backup.json`;
-                      a.click();
-                    }}
-                    className="btn btn-secondary flex-1"
-                  >EXPORT</button>
-                  <label className="flex-1">
-                    <input
-                      type="file"
-                      accept=".json"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          await invoke("import_db", { jsonData: await file.text() });
-                          loadMemos();
-                        }
-                        e.target.value = "";
-                      }}
-                    />
-                    <div className="btn btn-secondary text-center cursor-pointer">IMPORT</div>
-                  </label>
+              <div className="flex gap-2">
+                <div className="card flex-1" style={{ padding: '8px' }}>
+                  <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>LANGUAGE</div>
+                  <select value={language} onChange={(e) => setLanguage(e.target.value)} className="input" style={{ fontSize: '11px', padding: '4px 6px' }}>
+                    {languages.map((lang) => <option key={lang.code} value={lang.code}>{lang.name}</option>)}
+                  </select>
+                </div>
+                <div className="card flex-1" style={{ padding: '8px' }}>
+                  <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>WINDOW</div>
+                  <div className="flex gap-2">
+                    <button onClick={toggleAlwaysOnTop} className={`btn ${alwaysOnTop ? 'btn-active' : 'btn-secondary'} flex-1`} style={{ padding: '4px 6px', fontSize: '10px' }}>
+                      {alwaysOnTop ? '📌 ON' : '📌 OFF'}
+                    </button>
+                    <input type="range" min="50" max="100" value={opacity} onChange={(e) => changeOpacity(Number(e.target.value))} className="flex-1" title={`${opacity}%`} />
+                  </div>
                 </div>
               </div>
 
-              <div className="card">
-                <div className="card-header">DANGER_ZONE</div>
-                <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>
-                  ⚠️ 이 작업은 되돌릴 수 없습니다. 모든 메모가 영구적으로 삭제됩니다.
-                </p>
-                <button
-                  onClick={deleteAllMemos}
-                  className="btn btn-danger w-full"
-                >
-                  DELETE_ALL_MEMOS ({memos.length})
-                </button>
+              <button onClick={handleSaveSettings} className="btn btn-primary w-full" style={{ padding: '6px 12px', fontSize: '11px' }}>SAVE_SETTINGS</button>
+
+              <div className="flex gap-2">
+                <div className="card flex-1" style={{ padding: '8px' }}>
+                  <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>DATA_BACKUP</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        const json = await invoke<string>("export_db");
+                        const a = document.createElement("a");
+                        a.href = URL.createObjectURL(new Blob([json]));
+                        a.download = `jolajoa_backup.json`;
+                        a.click();
+                      }}
+                      className="btn btn-secondary flex-1"
+                      style={{ padding: '4px 8px', fontSize: '10px' }}
+                    >EXPORT</button>
+                    <label className="flex-1">
+                      <input type="file" accept=".json" className="hidden" onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) { await invoke("import_db", { jsonData: await file.text() }); loadMemos(); }
+                        e.target.value = "";
+                      }} />
+                      <div className="btn btn-secondary text-center cursor-pointer" style={{ padding: '4px 8px', fontSize: '10px' }}>IMPORT</div>
+                    </label>
+                  </div>
+                </div>
+                <div className="card flex-1" style={{ padding: '8px' }}>
+                  <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>DANGER</div>
+                  <button onClick={deleteAllMemos} className="btn btn-danger w-full" style={{ padding: '4px 8px', fontSize: '10px' }}>
+                    DELETE_ALL ({memos.length})
+                  </button>
+                </div>
               </div>
 
               {(result || error) && (
-                <p className={`status ${error ? 'status-error' : 'status-success'}`}>{error || result}</p>
+                <p className={`status ${error ? 'status-error' : 'status-success'}`} style={{ fontSize: '10px' }}>{error || result}</p>
               )}
             </div>
           )}
 
           {/* ===== MEMO VIEW & EDIT (실시간 저장) ===== */}
           {selectedMemo && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               {/* 헤더: 닫기 & 삭제 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="tag" style={{ background: 'var(--color-accent)', color: '#ffffff' }}>{editCategory}</span>
-                  {saving && <span className="status status-warning">SAVING...</span>}
+                  <span className="tag" style={{ background: 'var(--color-accent)', color: '#ffffff', fontSize: '10px', padding: '2px 6px' }}>{editCategory}</span>
+                  {saving && <span className="status status-warning" style={{ fontSize: '10px' }}>SAVING...</span>}
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={deleteMemo} className="btn btn-danger">DELETE</button>
-                  <button onClick={() => setSelectedMemo(null)} className="btn btn-secondary">X</button>
+                <div className="flex gap-1">
+                  <button onClick={deleteMemo} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '10px' }}>DEL</button>
+                  <button onClick={() => setSelectedMemo(null)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '10px' }}>X</button>
                 </div>
               </div>
 
@@ -679,66 +704,45 @@ function App() {
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full text-2xl font-bold uppercase bg-transparent border-b-2 focus:outline-none py-2"
+                className="w-full text-base font-bold uppercase bg-transparent border-b-2 focus:outline-none py-1"
                 style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
                 placeholder="TITLE..."
               />
 
               {/* 카테고리 & 태그 (인라인 편집) */}
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className="section-label block mb-1">CATEGORY</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={editCategory}
-                      onChange={(e) => setEditCategory(e.target.value)}
-                      className="input flex-1"
-                    >
+                  <label className="section-label block mb-1" style={{ fontSize: '9px' }}>CAT</label>
+                  <div className="flex gap-1">
+                    <select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="input flex-1" style={{ padding: '4px 6px', fontSize: '11px' }}>
                       {allCategories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
                     </select>
-                    <input
-                      type="text"
-                      value={editCategory}
-                      onChange={(e) => setEditCategory(e.target.value)}
-                      className="input flex-1"
-                      placeholder="New..."
-                    />
+                    <input type="text" value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="input flex-1" placeholder="New..." style={{ padding: '4px 6px', fontSize: '11px' }} />
                   </div>
                 </div>
                 <div className="flex-1">
-                  <label className="section-label block mb-1">TAGS</label>
-                  <input
-                    type="text"
-                    value={editTags}
-                    onChange={(e) => setEditTags(e.target.value)}
-                    className="input"
-                    placeholder="tag1, tag2, tag3"
-                  />
+                  <label className="section-label block mb-1" style={{ fontSize: '9px' }}>TAGS</label>
+                  <input type="text" value={editTags} onChange={(e) => setEditTags(e.target.value)} className="input" placeholder="tag1, tag2" style={{ padding: '4px 6px', fontSize: '11px' }} />
                 </div>
               </div>
 
               {/* 내용 (인라인 편집) */}
-              <div className="card">
-                <div className="card-header">CONTENT</div>
-                <textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="input h-64 resize-none"
-                  placeholder="Write your memo here..."
-                />
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>CONTENT</div>
+                <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="input h-40 resize-none" placeholder="Write your memo here..." style={{ fontSize: '12px' }} />
               </div>
 
               {/* 미리보기 */}
               {editContent && (
-                <div className="card">
-                  <div className="card-header">PREVIEW</div>
-                  <div className="mt-2">{renderMarkdown(editContent)}</div>
+                <div className="card" style={{ padding: '8px' }}>
+                  <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>PREVIEW</div>
+                  <div style={{ fontSize: '12px' }}>{renderMarkdown(editContent)}</div>
                 </div>
               )}
 
               {/* 메타 정보 */}
-              <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                CREATED: {selectedMemo.created_at} | UPDATED: {selectedMemo.updated_at}
+              <div style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
+                {selectedMemo.created_at} | {selectedMemo.updated_at}
               </div>
             </div>
           )}

@@ -69,8 +69,8 @@ body {
   color: var(--color-text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
-  font-size: 18px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 #root {
@@ -134,10 +134,10 @@ body::after {
   font-family: var(--font-mono);
   font-weight: 700;
   text-transform: uppercase;
-  font-size: 16px;
+  font-size: 12px;
   letter-spacing: 0.03em;
   border: var(--border-width) solid var(--color-border);
-  padding: 1rem 1.5rem;
+  padding: 0.5rem 1rem;
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s;
 }
@@ -208,10 +208,10 @@ body::after {
 .input {
   background: var(--color-bg);
   border: var(--border-width) solid var(--color-border);
-  padding: 1rem 1.25rem;
+  padding: 0.5rem 0.75rem;
   color: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 18px;
+  font-size: 13px;
   width: 100%;
 }
 
@@ -224,17 +224,17 @@ body::after {
 .card {
   background: var(--color-bg);
   border: var(--border-width) solid var(--color-border);
-  padding: var(--space-xl);
+  padding: 1rem;
   box-shadow: var(--shadow-hard);
 }
 
 .card-header {
   border-bottom: var(--border-width) solid var(--color-border);
-  padding-bottom: var(--space-base);
-  margin-bottom: var(--space-lg);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  font-size: 16px;
+  font-size: 11px;
   letter-spacing: 0.05em;
 }
 
@@ -299,7 +299,7 @@ body::after {
 /* 섹션 라벨 */
 .section-label {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -330,4 +330,31 @@ body::after {
 .theme-toggle:hover {
   background: var(--color-text);
   color: var(--color-bg);
+}
+
+/* 슬라이더 */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--color-text);
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--color-text);
+  border: none;
+  cursor: pointer;
 }
