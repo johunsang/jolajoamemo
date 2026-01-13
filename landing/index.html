@@ -1,18 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Primary Meta Tags -->
-  <title>JolaJoa Memo - AI-Powered Smart Notepad | Auto-Organize Notes</title>
-  <meta name="title" content="JolaJoa Memo - AI-Powered Smart Notepad | Auto-Organize Notes">
-  <meta name="description" content="Free AI-powered notepad that automatically organizes your messy notes. Paste anything, ask anything. Auto-generate titles, categories, and tags with Google Gemini AI. Available for macOS and Windows.">
-  <meta name="keywords" content="AI notepad, smart notes, note taking app, AI note organizer, Gemini AI, automatic categorization, natural language search, memo app, macOS app, Windows app, productivity tool, note management, AI assistant">
+  <title>졸라좋아 메모 - AI가 알아서 정리해주는 메모장</title>
+  <meta name="title" content="졸라좋아 메모 - AI가 알아서 정리해주는 메모장">
+  <meta name="description" content="아무거나 붙여넣기만 하면 AI가 알아서 정리해줍니다. 일정도 뽑아주고, 할일도 정리해주고. 무료입니다.">
+  <meta name="keywords" content="AI 메모장, 스마트 노트, 메모 앱, AI 정리, Gemini AI, 자동 분류, 할일 관리, 일정 관리, macOS 앱, Windows 앱">
   <meta name="author" content="JolaJoa">
   <meta name="robots" content="index, follow">
-  <meta name="language" content="English">
-  <meta name="revisit-after" content="7 days">
+  <meta name="language" content="Korean">
 
   <!-- Canonical URL -->
   <link rel="canonical" href="https://www.jolajoa.com/">
@@ -20,33 +19,22 @@
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/logo.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://www.jolajoa.com/">
-  <meta property="og:title" content="JolaJoa Memo - AI-Powered Smart Notepad">
-  <meta property="og:description" content="Free AI-powered notepad that automatically organizes your messy notes. Paste anything, ask anything. Powered by Google Gemini AI.">
+  <meta property="og:title" content="졸라좋아 메모 - AI가 알아서 정리해주는 메모장">
+  <meta property="og:description" content="아무거나 붙여넣기만 하면 AI가 알아서 정리해줍니다.">
   <meta property="og:image" content="https://www.jolajoa.com/logo.png">
-  <meta property="og:image:width" content="1024">
-  <meta property="og:image:height" content="1024">
-  <meta property="og:site_name" content="JolaJoa Memo">
-  <meta property="og:locale" content="en_US">
+  <meta property="og:locale" content="ko_KR">
 
   <!-- Twitter -->
   <meta property="twitter:card" content="summary_large_image">
-  <meta property="twitter:url" content="https://www.jolajoa.com/">
-  <meta property="twitter:title" content="JolaJoa Memo - AI-Powered Smart Notepad">
-  <meta property="twitter:description" content="Free AI-powered notepad that automatically organizes your messy notes. Paste anything, ask anything.">
+  <meta property="twitter:title" content="졸라좋아 메모 - AI가 알아서 정리해주는 메모장">
+  <meta property="twitter:description" content="아무거나 붙여넣기만 하면 AI가 알아서 정리해줍니다.">
   <meta property="twitter:image" content="https://www.jolajoa.com/logo.png">
 
-  <!-- Additional SEO -->
-  <meta name="application-name" content="JolaJoa Memo">
   <meta name="theme-color" content="#000000">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="JolaJoa Memo">
 
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-2KPY9K9TQR"></script>
@@ -55,34 +43,6 @@
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
     gtag('config', 'G-2KPY9K9TQR');
-  </script>
-
-  <!-- Structured Data (JSON-LD) -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "JolaJoa Memo",
-    "description": "AI-powered notepad that automatically organizes your messy notes. Paste anything, ask anything.",
-    "applicationCategory": "ProductivityApplication",
-    "operatingSystem": "macOS, Windows",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "5",
-      "ratingCount": "1"
-    },
-    "author": {
-      "@type": "Organization",
-      "name": "JolaJoa"
-    },
-    "softwareVersion": "0.1.0",
-    "downloadUrl": "https://www.jolajoa.com/"
-  }
   </script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -108,30 +68,22 @@
       padding: 0 24px;
     }
 
-    /* Header */
     header {
       padding: 24px 0;
       border-bottom: 1px solid rgba(255,255,255,0.1);
     }
 
-    .logo {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -1px;
-    }
-
-    /* Hero */
     .hero {
-      padding: 120px 0;
+      padding: 100px 0;
       text-align: center;
       border-bottom: 1px solid rgba(255,255,255,0.1);
     }
 
     .hero h1 {
-      font-size: clamp(48px, 10vw, 120px);
+      font-size: clamp(36px, 8vw, 80px);
       font-weight: 700;
-      line-height: 1;
-      letter-spacing: -4px;
+      line-height: 1.2;
+      letter-spacing: -2px;
       margin-bottom: 32px;
     }
 
@@ -140,7 +92,7 @@
       color: rgba(255,255,255,0.6);
       max-width: 600px;
       margin: 0 auto 48px;
-      line-height: 1.6;
+      line-height: 1.8;
     }
 
     .download-buttons {
@@ -189,23 +141,73 @@
       height: 20px;
     }
 
-    /* Features */
-    .features {
-      padding: 120px 0;
+    /* 상황별 예시 섹션 */
+    .situations {
+      padding: 100px 0;
       border-bottom: 1px solid rgba(255,255,255,0.1);
     }
 
-    .features h2 {
+    .situation-card {
+      background: #111;
+      border: 2px solid #333;
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+
+    .situation-card h3 {
+      font-size: 20px;
+      margin-bottom: 16px;
+      color: #ff0;
+    }
+
+    .situation-card .input-example {
+      background: #1a1a1a;
+      border-left: 4px solid #555;
+      padding: 16px;
+      margin: 16px 0;
       font-size: 14px;
-      color: rgba(255,255,255,0.4);
-      margin-bottom: 48px;
-      letter-spacing: 2px;
+      color: rgba(255,255,255,0.7);
+      white-space: pre-wrap;
+    }
+
+    .situation-card .result {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .situation-card .result-item {
+      background: #222;
+      border: 1px solid #444;
+      padding: 8px 16px;
+      font-size: 12px;
+    }
+
+    .situation-card .result-item.schedule {
+      border-color: #00f;
+      background: rgba(0,0,255,0.1);
+    }
+
+    .situation-card .result-item.todo {
+      border-color: #f00;
+      background: rgba(255,0,0,0.1);
+    }
+
+    .situation-card .result-item.memo {
+      border-color: #0f0;
+      background: rgba(0,255,0,0.1);
+    }
+
+    .features {
+      padding: 100px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
     }
 
     .feature-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 48px;
+      gap: 32px;
     }
 
     .feature {
@@ -221,26 +223,18 @@
     }
 
     .feature h3 {
-      font-size: 24px;
+      font-size: 20px;
       margin-bottom: 16px;
     }
 
     .feature p {
       color: rgba(255,255,255,0.5);
-      line-height: 1.6;
+      line-height: 1.8;
     }
 
-    /* Screenshot */
     .screenshot {
-      padding: 120px 0;
+      padding: 100px 0;
       border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .screenshot h2 {
-      font-size: 14px;
-      color: rgba(255,255,255,0.4);
-      margin-bottom: 48px;
-      letter-spacing: 2px;
     }
 
     .screenshot-container {
@@ -249,17 +243,6 @@
       background: #0a0a0a;
     }
 
-    .screenshot-placeholder {
-      background: linear-gradient(135deg, #111 0%, #1a1a1a 100%);
-      aspect-ratio: 16/10;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: rgba(255,255,255,0.2);
-      font-size: 14px;
-    }
-
-    /* Tech */
     .tech {
       padding: 80px 0;
       border-bottom: 1px solid rgba(255,255,255,0.1);
@@ -283,7 +266,6 @@
       margin-top: 8px;
     }
 
-    /* Footer */
     footer {
       padding: 48px 0;
       text-align: center;
@@ -303,18 +285,12 @@
       color: #fff;
     }
 
-    /* Responsive */
     @media (max-width: 768px) {
       .hero {
-        padding: 80px 0;
+        padding: 60px 0;
       }
-
-      .hero h1 {
-        letter-spacing: -2px;
-      }
-
-      .features, .screenshot {
-        padding: 80px 0;
+      .situations, .features, .screenshot {
+        padding: 60px 0;
       }
     }
   </style>
@@ -322,20 +298,22 @@
 <body>
   <header>
     <div class="container">
-      <div class="logo"><img src="./logo.png" alt="JolaJoa Memo" style="height: 40px; vertical-align: middle;"></div>
+      <div class="logo"><img src="./logo.png" alt="졸라좋아 메모" style="height: 40px; vertical-align: middle;"></div>
     </div>
   </header>
 
   <section class="hero">
     <div class="container">
-      <img src="./logo.png" alt="JolaJoa Memo" style="height: 120px; margin-bottom: 32px;">
-      <div style="display: inline-block; background: #ff0000; color: #fff; padding: 4px 12px; font-size: 12px; font-weight: 700; margin-bottom: 16px;">BETA</div>
-      <h1>PASTE.<br>ORGANIZE.<br>FIND.</h1>
+      <img src="./logo.png" alt="졸라좋아 메모" style="height: 100px; margin-bottom: 24px;">
+      <div style="display: inline-block; background: #ff0000; color: #fff; padding: 4px 12px; font-size: 12px; font-weight: 700; margin-bottom: 16px;">베타 (버그 있으면 참아주세요 ㅋㅋ)</div>
+      <h1>메모 정리 ㅈㄴ 귀찮지?<br>AI한테 시켜</h1>
       <div id="downloadCount" style="font-size: 12px; color: rgba(255,255,255,0.4); margin-bottom: 16px;"></div>
-      <p>AI-powered notepad that automatically organizes your messy notes. Paste anything, ask anything. Powered by Google Gemini.</p>
-      <div class="download-buttons" id="downloadButtons">
-        <!-- JS로 OS 감지 후 동적 생성 -->
-      </div>
+      <p>
+        복붙만 해. 진짜 그게 끝임.<br>
+        AI가 ㅈㄴ 알아서 정리해줌. 일정도 뽑고 할일도 만들어줌.<br>
+        <strong>무료임 ㅋㅋ 돈 안 받음. 진심.</strong>
+      </p>
+      <div class="download-buttons" id="downloadButtons"></div>
       <script>
         (function() {
           var isWindows = navigator.platform.indexOf('Win') > -1;
@@ -343,35 +321,28 @@
           var container = document.getElementById('downloadButtons');
 
           if (isWindows) {
-            // Windows 사용자: Windows 버튼만 활성화
             container.innerHTML = `
               <button onclick="openWindowsModal()" class="btn btn-primary">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 12V6.75l6-1.32v6.48L3 12zm17-9v8.75l-10 .15V5.21L20 3zM3 13l6 .09v6.81l-6-1.15V13zm17 .25V22l-10-1.91V13.1l10 .15z"/></svg>
-                [WINDOWS] DOWNLOAD
+                윈도우 다운로드
               </button>
             `;
           } else if (isMac) {
-            // Mac 사용자: macOS 준비중 안내
             container.innerHTML = `
-              <button onclick="alert('macOS 버전은 현재 준비 중입니다.\\n\\n곧 출시 예정입니다!')" class="btn btn-secondary" style="opacity: 0.7;">
+              <button onclick="alert('맥OS 버전은 준비 중입니다!\\n\\n조금만 기다려주세요 ㅠㅠ')" class="btn btn-secondary" style="opacity: 0.7;">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                [MACOS] COMING SOON
+                맥OS (준비중)
               </button>
               <button onclick="openWindowsModal()" class="btn btn-secondary" style="opacity: 0.5;">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 12V6.75l6-1.32v6.48L3 12zm17-9v8.75l-10 .15V5.21L20 3zM3 13l6 .09v6.81l-6-1.15V13zm17 .25V22l-10-1.91V13.1l10 .15z"/></svg>
-                [WINDOWS]
+                윈도우
               </button>
             `;
           } else {
-            // 기타 OS: 둘 다 표시
             container.innerHTML = `
               <button onclick="openWindowsModal()" class="btn btn-primary">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 12V6.75l6-1.32v6.48L3 12zm17-9v8.75l-10 .15V5.21L20 3zM3 13l6 .09v6.81l-6-1.15V13zm17 .25V22l-10-1.91V13.1l10 .15z"/></svg>
-                [WINDOWS] DOWNLOAD
-              </button>
-              <button onclick="alert('macOS 버전은 현재 준비 중입니다.\\n\\n곧 출시 예정입니다!')" class="btn btn-secondary" style="opacity: 0.7;">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                [MACOS] COMING SOON
+                윈도우 다운로드
               </button>
             `;
           }
@@ -384,35 +355,35 @@
   <div id="windowsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; overflow-y: auto;">
     <div style="max-width: 600px; margin: 50px auto; padding: 32px; background: #000; border: 3px solid #fff;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-        <h2 style="font-size: 20px; font-weight: 700;">WINDOWS DOWNLOAD</h2>
+        <h2 style="font-size: 20px; font-weight: 700;">윈도우 다운로드</h2>
         <button onclick="closeWindowsModal()" style="background: none; border: 2px solid #fff; color: #fff; padding: 8px 16px; cursor: pointer; font-family: inherit; font-weight: 700;">X</button>
       </div>
 
       <div style="background: #ff0000; color: #fff; padding: 12px 16px; margin-bottom: 24px;">
-        <strong>BETA VERSION</strong> - 현재 베타 테스트 중입니다
+        <strong>⚠️ 베타</strong> - 버그 있을 수 있음 ㅋㅋ 참아줘
       </div>
 
       <div style="margin-bottom: 24px;">
-        <h3 style="font-size: 14px; color: rgba(255,255,255,0.5); margin-bottom: 16px;">> 설치 안내</h3>
+        <h3 style="font-size: 14px; color: rgba(255,255,255,0.5); margin-bottom: 16px;">> 설치 전 읽어봐 (겁먹지 마)</h3>
         <p style="color: rgba(255,255,255,0.8); line-height: 1.8; margin-bottom: 16px;">
-          베타 버전은 아직 Microsoft 인증을 받지 않아<br>
-          <strong>"Windows의 PC 보호"</strong> 경고가 표시됩니다.
+          베타라서 마소 인증이 아직 없음 ㅠㅠ<br>
+          그래서 <strong>"PC 보호"</strong> 경고 뜰 수 있는데...<br>
+          <span style="color: #ff0;">ㅋㅋㅋ 바이러스 아님 진짜임 ㅋㅋㅋ</span>
         </p>
 
         <div style="background: #111; border: 1px solid #333; padding: 20px; margin-bottom: 16px;">
-          <p style="color: #fff; font-weight: 700; margin-bottom: 12px;">설치 방법:</p>
+          <p style="color: #fff; font-weight: 700; margin-bottom: 12px;">설치법 (개쉬움):</p>
           <ol style="color: rgba(255,255,255,0.8); line-height: 2; padding-left: 20px;">
-            <li>다운로드된 .exe 파일 실행</li>
-            <li>"Windows의 PC 보호" 창이 뜨면<br>
-                → <strong style="color: #5555ff;">"추가 정보"</strong> 클릭</li>
-            <li><strong style="color: #5555ff;">"실행"</strong> 버튼 클릭</li>
-            <li>설치 마법사 진행</li>
+            <li>파일 다운받고 실행</li>
+            <li>"PC 보호" 뜨면 → <strong style="color: #5555ff;">"추가 정보"</strong> 누름</li>
+            <li><strong style="color: #5555ff;">"실행"</strong> 누름</li>
+            <li>끝 ㅋㅋㅋ</li>
           </ol>
         </div>
 
         <p style="color: rgba(255,255,255,0.5); font-size: 13px;">
-          * 이 앱은 오픈소스이며 악성코드가 없습니다.<br>
-          * 소스코드: <a href="https://github.com/johunsang/jolajoamemo" target="_blank" style="color: #5555ff;">GitHub</a>
+          * 오픈소스임. 소스코드 다 공개함.<br>
+          * 의심되면 직접 봐: <a href="https://github.com/johunsang/jolajoamemo" target="_blank" style="color: #5555ff;">GitHub</a> (코드 볼 줄 알면 ㅋㅋ)
         </p>
       </div>
 
@@ -420,7 +391,7 @@
          class="btn btn-primary"
          style="display: block; text-align: center; width: 100%;"
          onclick="closeWindowsModal()">
-        DOWNLOAD .EXE
+        다운로드 (.exe)
       </a>
     </div>
   </div>
@@ -438,53 +409,155 @@
       if (e.target === this) closeWindowsModal();
     });
 
-    // 다운로드 카운트 가져오기
     fetch('https://api.github.com/repos/johunsang/jolajoamemo/releases')
       .then(r => r.json())
       .then(releases => {
         if (releases && releases[0] && releases[0].assets) {
           var total = releases[0].assets.reduce((sum, a) => sum + a.download_count, 0);
           if (total > 0) {
-            document.getElementById('downloadCount').textContent = total + ' DOWNLOADS';
+            document.getElementById('downloadCount').textContent = total + '명이 다운로드함';
           }
         }
       })
       .catch(() => {});
   </script>
 
+  <!-- 상황별 예시 섹션 -->
+  <section class="situations">
+    <div class="container">
+      <h2 style="font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 48px; letter-spacing: 2px;">> 어떨 때 쓰냐면요</h2>
+
+      <div class="situation-card">
+        <h3>🍺 상황 1: 술 약속 잡을 때</h3>
+        <p style="color: rgba(255,255,255,0.5);">친구가 카톡으로 ㅈㄹ함:</p>
+        <div class="input-example">"야 이 ㅅㅋ아 다음주 금요일 저녁 7시에 홍대 입구 앞에서 보자
+그리고 저번에 빌린 3만원 가져와 ㅡㅡ
+아 그리고 여친도 데려와 소개시켜줘"</div>
+        <p style="color: rgba(255,255,255,0.5);">복붙 ㄱㄱ:</p>
+        <div class="result">
+          <span class="result-item schedule">📅 일정: 홍대 술약 (금요일 19:00)</span>
+          <span class="result-item todo">💰 할일: 3만원 갚기 (시발...)</span>
+          <span class="result-item todo">👫 할일: 여친 데려가기</span>
+        </div>
+      </div>
+
+      <div class="situation-card">
+        <h3>🤯 상황 2: 회사에서 멘탈 나갈 때</h3>
+        <p style="color: rgba(255,255,255,0.5);">ㅈ같은 회의 끝나고 메모해둔 것들:</p>
+        <div class="input-example">"김부장 또 ㅈㄹ함 - 예산안 금요일까지 제출하래
+마케팅팀 - 기획서 공유 안 해주면서 나한테는 달라함 ㅋㅋ
+거래처 사장 - 샘플 보내드린다고 했는데 까먹음 ㅅㅂ
+아 ㅆㅂ 내일 치과인데 못 갈 것 같음"</div>
+        <p style="color: rgba(255,255,255,0.5);">복붙하면 알아서 정리됨:</p>
+        <div class="result">
+          <span class="result-item todo">🔥 할일: 예산안 (금요일) - 급함!!</span>
+          <span class="result-item todo">📝 할일: 기획서 공유 요청</span>
+          <span class="result-item todo">📦 할일: 샘플 발송 (빨리)</span>
+          <span class="result-item schedule">🦷 일정: 치과 (내일)</span>
+        </div>
+      </div>
+
+      <div class="situation-card">
+        <h3>👩 상황 3: 엄마 카톡 테러</h3>
+        <p style="color: rgba(255,255,255,0.5);">엄마가 또 카톡으로 폭격함:</p>
+        <div class="input-example">"아들아~~~~
+오는길에 마트 들러서 계란이랑 두부 좀 사와
+아 그리고 이모 생신이 다음주 토요일이야
+선물 뭐 살지 생각해봐 니가 센스있잖아
+그리고 아빠 약 떨어졌대 병원 예약 좀 해줘
+밥은 먹고 다니니??? 살 좀 쪄라~~~"</div>
+        <p style="color: rgba(255,255,255,0.5);">하... 이거 다 어떻게 기억해:</p>
+        <div class="result">
+          <span class="result-item todo">🛒 할일: 마트 (계란, 두부)</span>
+          <span class="result-item schedule">🎂 일정: 이모 생신 (다음주 토)</span>
+          <span class="result-item todo">🎁 할일: 이모 선물 고르기</span>
+          <span class="result-item todo">🏥 할일: 아빠 병원 예약</span>
+        </div>
+      </div>
+
+      <div class="situation-card">
+        <h3>💻 상황 4: 코딩하다가 에러 터질 때</h3>
+        <p style="color: rgba(255,255,255,0.5);">3시간 삽질 끝에 스택오버플로우에서 찾음:</p>
+        <div class="input-example">"ㅅㅂ TypeError: Cannot read property 'map' of undefined
+해결법 찾음 ㅋㅋㅋㅋ
+1. useState([]) 초기값 빈 배열로
+2. data?.map() 옵셔널 체이닝
+3. {data && data.map()} 조건부 렌더링
+
+이거 블로그에 정리해야겠다 나중에 또 까먹을 듯"</div>
+        <p style="color: rgba(255,255,255,0.5);">AI가 알아서 코드 메모로 분류해줌:</p>
+        <div class="result">
+          <span class="result-item memo">💾 메모: TypeError 해결법</span>
+          <span class="result-item todo">✍️ 할일: 블로그 글 쓰기</span>
+        </div>
+      </div>
+
+      <div class="situation-card">
+        <h3>🌙 상황 5: 새벽 3시에 뇌절할 때</h3>
+        <p style="color: rgba(255,255,255,0.5);">잠 안 오고 갑자기 천재적인 생각 떠오름:</p>
+        <div class="input-example">"아 시발 고양이 카페 창업하면 대박일듯
+메뉴: 고양이 발바닥 쿠키, 냥냥 라떼 ㅋㅋㅋ
+이름은 '야옹한 오후'로 하면 개귀엽
+내일 창업 자료 찾아봐야지
+아 근데 자본금이 없네 ㅋㅋㅋㅋㅋ"</div>
+        <p style="color: rgba(255,255,255,0.5);">새벽 뇌절도 일단 저장:</p>
+        <div class="result">
+          <span class="result-item memo">💡 메모: 고양이 카페 아이디어</span>
+          <span class="result-item todo">📚 할일: 창업 자료 조사</span>
+        </div>
+      </div>
+
+      <div class="situation-card">
+        <h3>💼 상황 6: 소개팅 후 연락처 저장</h3>
+        <p style="color: rgba(255,255,255,0.5);">소개팅녀 정보 대충 메모:</p>
+        <div class="input-example">"이수진 (소개팅)
+89년생 강남 살음
+010-1234-5678
+인스타 @sujin_lee
+취미: 필라테스, 와인
+첫인상: 좀 까칠한데 예쁨 ㅋㅋ"</div>
+        <p style="color: rgba(255,255,255,0.5);">연락처로 자동 저장됨:</p>
+        <div class="result">
+          <span class="result-item memo">💕 메모: 이수진 (소개팅녀)</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <section class="features">
     <div class="container">
-      <h2>&gt; FEATURES</h2>
+      <h2 style="font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 48px; letter-spacing: 2px;">> 뭘 해주냐면</h2>
       <div class="feature-grid">
         <div class="feature">
           <div class="feature-number">01</div>
-          <h3>PASTE_ANYTHING</h3>
-          <p>Contact lists, meeting notes, code snippets, random thoughts. Just paste. AI automatically formats, categorizes, and tags everything.</p>
+          <h3>걍 복붙해</h3>
+          <p>연락처, 회의록, 코드, 새벽 뇌절... 아무거나 복붙하면 AI가 ㅈㄴ 알아서 정리해줌</p>
         </div>
         <div class="feature">
           <div class="feature-number">02</div>
-          <h3>ASK_ANYTHING</h3>
-          <p>"What's John's phone number?" "Summarize last week's meetings." Natural language search across all your notes with RAG technology.</p>
+          <h3>일정 ㅇㅈ로 뽑아줌</h3>
+          <p>"다음주 금요일 7시 술약" 이러면 알아서 일정으로 빠짐. 날짜 계산 AI가 해줌 ㅋㅋ</p>
         </div>
         <div class="feature">
           <div class="feature-number">03</div>
-          <h3>AUTO_MERGE</h3>
-          <p>Similar content gets automatically merged. No duplicates. AI detects relationships and keeps your notes clean and organized.</p>
+          <h3>할일도 뽑아줌</h3>
+          <p>"이거 해야함", "금요일까지" 이런 거 감지하면 할일로 자동 추가. 급한 거 먼저 정렬해줌</p>
         </div>
         <div class="feature">
           <div class="feature-number">04</div>
-          <h3>LOCAL_FIRST</h3>
-          <p>All data stored locally in SQLite. Export/import JSON backups. Your notes never leave your machine unless you want them to.</p>
+          <h3>물어보면 대답해줌</h3>
+          <p>"김과장 번호 뭐야?" "저번 회의 내용 뭐였지?" 그냥 말로 물어봐. AI가 찾아줌</p>
         </div>
         <div class="feature">
           <div class="feature-number">05</div>
-          <h3>TRACK_USAGE</h3>
-          <p>Real-time token count and cost display for every AI operation. Know exactly how much you're spending on Gemini API.</p>
+          <h3>니 컴퓨터에만 저장</h3>
+          <p>클라우드 안 씀. 니 컴터에만 저장됨. 개인정보 유출? ㄴㄴ 걱정 ㄴ</p>
         </div>
         <div class="feature">
           <div class="feature-number">06</div>
-          <h3>MULTILINGUAL</h3>
-          <p>Available in English, Korean, Spanish, German, and French. AI understands and responds in your language.</p>
+          <h3>공짜임 ㅋㅋ</h3>
+          <p>앱은 무료. 구글 Gemini API 키만 있으면 됨 (그것도 무료임 ㅋㅋ 구글이 줌)</p>
         </div>
       </div>
     </div>
@@ -492,35 +565,32 @@
 
   <section class="screenshot">
     <div class="container">
-      <h2>&gt; INTERFACE</h2>
+      <h2 style="font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 48px; letter-spacing: 2px;">> 이렇게 생김</h2>
       <div class="screenshot-container">
-        <img src="/screenshot.png" alt="JolaJoa Memo Interface - Brutalist black & white design with memo list sidebar, main content area, and detail view" style="width: 100%; height: auto; display: block;">
+        <img src="/screenshot.png" alt="졸라좋아 메모 화면" style="width: 100%; height: auto; display: block;">
       </div>
     </div>
   </section>
 
   <section class="install-guide" style="padding: 60px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
     <div class="container">
-      <h2 style="font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 32px; letter-spacing: 2px;">> INSTALLATION</h2>
+      <h2 style="font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 32px; letter-spacing: 2px;">> 설치법 (개쉬움)</h2>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px;">
         <div style="padding: 24px; border: 1px solid rgba(255,255,255,0.1);">
-          <h3 style="font-size: 16px; margin-bottom: 16px;">WINDOWS</h3>
+          <h3 style="font-size: 16px; margin-bottom: 16px;">🪟 윈도우</h3>
           <p style="color: rgba(255,255,255,0.5); font-size: 14px; line-height: 1.8;">
-            1. Download .exe file<br>
-            2. If "Windows protected your PC" appears:<br>
-            &nbsp;&nbsp;&nbsp;→ Click "More info"<br>
-            &nbsp;&nbsp;&nbsp;→ Click "Run anyway"<br>
-            3. Follow installation wizard
+            1. .exe 다운로드<br>
+            2. "PC 보호" 뜨면:<br>
+            &nbsp;&nbsp;&nbsp;→ "추가 정보" 누름<br>
+            &nbsp;&nbsp;&nbsp;→ "실행" 누름<br>
+            3. 끝 ㅋㅋㅋ 3초 컷
           </p>
         </div>
         <div style="padding: 24px; border: 1px solid rgba(255,255,255,0.1); opacity: 0.5;">
-          <h3 style="font-size: 16px; margin-bottom: 16px;">MACOS (COMING SOON)</h3>
+          <h3 style="font-size: 16px; margin-bottom: 16px;">🍎 맥OS (아직...)</h3>
           <p style="color: rgba(255,255,255,0.5); font-size: 14px; line-height: 1.8;">
-            1. Download .dmg file<br>
-            2. If blocked by Gatekeeper:<br>
-            &nbsp;&nbsp;&nbsp;→ Right-click → Open<br>
-            &nbsp;&nbsp;&nbsp;→ Or run: xattr -cr /path/to/app<br>
-            3. Drag to Applications
+            개발중임 ㅠㅠ<br>
+            조금만 기다려줘...
           </p>
         </div>
       </div>
@@ -532,23 +602,23 @@
       <div class="tech-grid">
         <div class="tech-item">
           <strong>TAURI</strong>
-          <span>Framework</span>
+          <span>프레임워크</span>
         </div>
         <div class="tech-item">
           <strong>RUST</strong>
-          <span>Backend</span>
+          <span>백엔드</span>
         </div>
         <div class="tech-item">
           <strong>REACT</strong>
-          <span>Frontend</span>
+          <span>프론트엔드</span>
         </div>
         <div class="tech-item">
           <strong>SQLITE</strong>
-          <span>Database</span>
+          <span>데이터베이스</span>
         </div>
         <div class="tech-item">
           <strong>GEMINI</strong>
-          <span>AI Engine</span>
+          <span>AI 엔진</span>
         </div>
       </div>
     </div>
@@ -556,8 +626,9 @@
 
   <footer>
     <div class="container">
-      <p>Built with obsession. <a href="https://github.com/user/jolajoamemo">GitHub</a></p>
-      <p style="margin-top: 16px;">Requires Google Gemini API key. Get one at <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></p>
+      <p>혼자 ㅈㄴ 밤새서 만듦 ㅋㅋ <a href="https://github.com/johunsang/jolajoamemo">GitHub 소스코드 (바이러스 의심되면 확인해)</a></p>
+      <p style="margin-top: 16px;">구글 Gemini API 키 필요함. <a href="https://aistudio.google.com/apikey" target="_blank">여기서 공짜로 발급받아</a> (3초 컷)</p>
+      <p style="margin-top: 16px; font-size: 10px; color: rgba(255,255,255,0.3);">버그 있으면 GitHub에 이슈 남겨줘... 제발... 🙏</p>
     </div>
   </footer>
 </body>

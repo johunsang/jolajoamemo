@@ -198,11 +198,25 @@ body {
   font-family: var(--font-mono);
   font-size: 13px;
   width: 100%;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .input:focus {
   outline: none;
   box-shadow: var(--shadow-hard-sm);
+}
+
+/* 텍스트 선택 가능하게 */
+textarea, input[type="text"], input[type="password"], .card, .code-block, p, span, div {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+button, a, nav {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* 카드 */

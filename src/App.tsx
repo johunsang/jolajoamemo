@@ -24,6 +24,28 @@ interface UsageStats {
   today_cost_usd: number;
 }
 
+interface Schedule {
+  id: number;
+  memo_id: number | null;
+  title: string;
+  start_time: string | null;
+  end_time: string | null;
+  location: string | null;
+  description: string | null;
+  google_event_id: string | null;
+  created_at: string;
+}
+
+interface Todo {
+  id: number;
+  memo_id: number | null;
+  title: string;
+  completed: boolean;
+  priority: string | null;
+  due_date: string | null;
+  created_at: string;
+}
+
 interface InputResult {
   success: boolean;
   message: string;
@@ -42,7 +64,7 @@ interface SearchResult {
   cost_usd: number;
 }
 
-type Tab = "input" | "search" | "settings";
+type Tab = "input" | "search" | "schedule" | "todo" | "settings";
 
 function App() {
   const { t, i18n } = useTranslation();
@@ -56,6 +78,8 @@ function App() {
   const [language, setLanguage] = useState("ko");
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [memos, setMemos] = useState<Memo[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [todos, setTodos] = useState<Todo[]>([]);
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
@@ -72,6 +96,7 @@ function App() {
   const [updating, setUpdating] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [opacity, setOpacity] = useState(100);
+  const [zoomLevel, setZoomLevel] = useState(100);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,6 +105,8 @@ function App() {
     loadSettings();
     loadUsage();
     loadMemos();
+    loadSchedules();
+    loadTodos();
     checkForUpdates();
   }, []);
 
@@ -195,6 +222,12 @@ function App() {
         setOpacity(opVal);
         document.body.style.opacity = `${opVal / 100}`;
       }
+      const zoom = await invoke<string>("get_setting", { key: "zoom_level" });
+      if (zoom) {
+        const zoomVal = parseInt(zoom);
+        setZoomLevel(zoomVal);
+        document.documentElement.style.fontSize = `${zoomVal}%`;
+      }
     } catch (e) { console.error(e); }
   };
 
@@ -237,6 +270,68 @@ function App() {
     } catch (e) { console.error(e); }
   };
 
+  const loadSchedules = async () => {
+    try {
+      const list = await invoke<Schedule[]>("get_schedules");
+      setSchedules(list);
+    } catch (e) { console.error(e); }
+  };
+
+  const deleteSchedule = async (id: number) => {
+    try {
+      await invoke("delete_schedule", { id });
+      loadSchedules();
+      loadMemos(); // 원본 메모도 삭제되므로 새로고침
+    } catch (e) { setError(String(e)); }
+  };
+
+  const loadTodos = async () => {
+    try {
+      const list = await invoke<Todo[]>("get_todos");
+      setTodos(list);
+    } catch (e) { console.error(e); }
+  };
+
+  const toggleTodo = async (id: number) => {
+    try {
+      await invoke("toggle_todo", { id });
+      loadTodos();
+    } catch (e) { setError(String(e)); }
+  };
+
+  const deleteTodo = async (id: number) => {
+    try {
+      await invoke("delete_todo", { id });
+      loadTodos();
+      loadMemos(); // 원본 메모도 삭제되므로 새로고침
+    } catch (e) { setError(String(e)); }
+  };
+
+  // 일정 날짜 포맷
+  const formatScheduleDate = (dateStr: string | null) => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr; // 파싱 실패시 원본 반환
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const scheduleDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.floor((scheduleDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    // 실제 날짜 (월/일)
+    const actualDate = `${date.getMonth() + 1}/${date.getDate()}`;
+
+    // 상대적 표현
+    let relativeLabel = "";
+    if (diffDays === 0) relativeLabel = "(오늘)";
+    else if (diffDays === 1) relativeLabel = "(내일)";
+    else if (diffDays === -1) relativeLabel = "(어제)";
+    else if (diffDays > 1 && diffDays <= 7) relativeLabel = `(${diffDays}일 후)`;
+
+    const time = date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    return `${actualDate}${relativeLabel} ${time}`;
+  };
+
   const handleInput = async () => {
     if (!inputText.trim()) return;
     setLoading(true); setError(null); setResult(null);
@@ -244,7 +339,7 @@ function App() {
       const res = await invoke<InputResult>("input_memo", { content: inputText });
       setResult(res.message);
       setInputText("");
-      loadUsage(); loadMemos();
+      loadUsage(); loadMemos(); loadSchedules(); loadTodos();
     } catch (e) { setError(String(e)); }
     finally { setLoading(false); }
   };
@@ -264,6 +359,7 @@ function App() {
     try {
       await invoke("save_setting", { key: "gemini_api_key", value: apiKey });
       await invoke("save_setting", { key: "language", value: language });
+      await invoke("save_setting", { key: "zoom_level", value: zoomLevel.toString() });
       i18n.changeLanguage(language);
       setResult(t("settings.saved"));
       setTimeout(() => setResult(null), 2000);
@@ -453,6 +549,8 @@ function App() {
           {[
             { id: "input" as Tab, label: "NEW" },
             { id: "search" as Tab, label: "SEARCH" },
+            { id: "schedule" as Tab, label: `CAL${schedules.length > 0 ? `(${schedules.length})` : ''}` },
+            { id: "todo" as Tab, label: `TODO${todos.filter(t => !t.completed).length > 0 ? `(${todos.filter(t => !t.completed).length})` : ''}` },
             { id: "settings" as Tab, label: "SET" },
           ].map((item) => (
             <button
@@ -460,9 +558,9 @@ function App() {
               onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
               className="px-3 py-1 text-xs font-bold uppercase"
               style={{
-                background: tab === item.id && !selectedMemo ? 'var(--color-bg)' : 'var(--color-bg)',
-                color: tab === item.id && !selectedMemo ? 'var(--color-accent)' : 'var(--color-text)',
-                border: tab === item.id && !selectedMemo ? '2px solid var(--color-accent)' : '2px solid var(--color-border)'
+                background: tab === item.id && !selectedMemo ? 'var(--color-text)' : 'var(--color-bg)',
+                color: tab === item.id && !selectedMemo ? 'var(--color-bg)' : 'var(--color-text)',
+                border: '2px solid var(--color-border)'
               }}
             >
               {item.label}
@@ -470,26 +568,31 @@ function App() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
-          {saving && <span className="text-sm opacity-70">...</span>}
-          <button onClick={toggleAlwaysOnTop} className="px-2 py-1 text-sm" style={{ background: alwaysOnTop ? 'var(--color-accent)' : 'transparent', color: alwaysOnTop ? '#fff' : 'inherit' }} title="Always on Top">
-            📌
-          </button>
-          <button onClick={() => changeOpacity(opacity >= 100 ? 70 : 100)} className="px-2 py-1 text-sm" style={{ background: opacity < 100 ? 'var(--color-accent)' : 'transparent', color: opacity < 100 ? '#fff' : 'inherit' }} title={`Opacity ${opacity}%`}>
-            👁
-          </button>
-          <button onClick={toggleDarkMode} className="px-2 py-1 text-sm" style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
-            {darkMode ? '☀' : '☾'}
-          </button>
-          <a
-            href="https://github.com/johunsang/jolajoamemo/issues"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1 text-sm font-bold"
-            style={{ background: '#ff0000', color: '#ffffff', textDecoration: 'none' }}
+        <div className="flex items-center gap-1">
+          {saving && <span className="text-xs px-2" style={{ color: 'var(--color-bg)' }}>...</span>}
+          <button
+            onClick={toggleAlwaysOnTop}
+            className="px-2 py-1 text-xs font-bold"
+            style={{
+              background: alwaysOnTop ? 'var(--color-bg)' : 'transparent',
+              color: alwaysOnTop ? 'var(--color-text)' : 'var(--color-bg)',
+              border: alwaysOnTop ? '1px solid var(--color-border)' : 'none'
+            }}
+            title="Always on Top"
           >
-            FEEDBACK
-          </a>
+            PIN
+          </button>
+          <button
+            onClick={toggleDarkMode}
+            className="px-2 py-1 text-xs font-bold"
+            style={{
+              background: 'var(--color-bg)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-border)'
+            }}
+          >
+            {darkMode ? 'LT' : 'DK'}
+          </button>
         </div>
       </div>
 
@@ -572,10 +675,10 @@ function App() {
         )}
 
         {/* ===== MAIN CONTENT ===== */}
-        <div className="flex-1 overflow-auto p-4" style={{ background: 'var(--color-bg-secondary)' }}>
+        <div className="flex-1 overflow-auto p-2 flex flex-col" style={{ background: 'var(--color-bg-secondary)' }}>
           {/* ===== NEW MEMO ===== */}
           {tab === "input" && !selectedMemo && (
-            <div className="card" style={{ padding: '8px' }}>
+            <div className="card flex-1 flex flex-col" style={{ padding: '8px' }}>
               <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
                 {t("input.title")}
                 {loading && <span style={{ marginLeft: '8px', color: 'var(--color-warning)' }}>저장중...</span>}
@@ -583,19 +686,16 @@ function App() {
               </div>
               <textarea
                 value={inputText}
-                onChange={(e) => {
-                  setInputText(e.target.value);
-                  // 자동 저장: 2초 후 저장
-                  if (e.target.value.trim().length > 10) {
-                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                    saveTimeoutRef.current = setTimeout(() => {
-                      if (e.target.value.trim().length > 10) handleInput();
-                    }, 2000);
+                onChange={(e) => setInputText(e.target.value)}
+                onBlur={() => {
+                  // 포커스 잃을 때 자동 저장
+                  if (inputText.trim().length > 10 && !loading) {
+                    handleInput();
                   }
                 }}
                 placeholder={t("input.placeholder")}
-                className="input resize-none"
-                style={{ fontSize: '12px', height: '120px' }}
+                className="input resize-none flex-1"
+                style={{ fontSize: '12px' }}
                 disabled={loading}
               />
               {error && <p style={{ fontSize: '10px', color: 'var(--color-error)', marginTop: '4px' }}>{error}</p>}
@@ -634,11 +734,148 @@ function App() {
             </div>
           )}
 
+          {/* ===== SCHEDULE ===== */}
+          {tab === "schedule" && !selectedMemo && (
+            <div className="space-y-2">
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
+                  일정 ({schedules.length})
+                </div>
+                {schedules.length === 0 ? (
+                  <div className="p-4 text-center" style={{ border: '2px dashed var(--color-text-muted)' }}>
+                    <p style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
+                      아직 일정이 없습니다.<br />
+                      메모에 날짜/시간이 포함되면 자동으로 추출됩니다.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {schedules.map((schedule) => (
+                      <div
+                        key={schedule.id}
+                        className="flex items-start justify-between p-2"
+                        style={{
+                          border: '1px solid var(--color-border)',
+                          background: 'var(--color-bg)'
+                        }}
+                      >
+                        <div className="flex-1">
+                          <div className="font-bold text-sm">{schedule.title}</div>
+                          {schedule.start_time && (
+                            <div className="text-xs mt-1" style={{ color: 'var(--color-accent)' }}>
+                              {formatScheduleDate(schedule.start_time)}
+                              {schedule.end_time && ` ~ ${formatScheduleDate(schedule.end_time)}`}
+                            </div>
+                          )}
+                          {schedule.location && (
+                            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                              {schedule.location}
+                            </div>
+                          )}
+                          {schedule.description && (
+                            <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                              {schedule.description}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => deleteSchedule(schedule.id)}
+                          className="btn btn-danger ml-2"
+                          style={{ padding: '2px 6px', fontSize: '9px' }}
+                        >
+                          X
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ===== TODO ===== */}
+          {tab === "todo" && !selectedMemo && (
+            <div className="space-y-2">
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
+                  할일 ({todos.filter(t => !t.completed).length}/{todos.length})
+                </div>
+                {todos.length === 0 ? (
+                  <div className="p-4 text-center" style={{ border: '2px dashed var(--color-text-muted)' }}>
+                    <p style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
+                      아직 할일이 없습니다.<br />
+                      메모에 "~해야 한다" 같은 내용이 있으면 자동으로 추출됩니다.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {todos.map((todo) => (
+                      <div
+                        key={todo.id}
+                        className="flex items-center gap-2 p-2"
+                        style={{
+                          border: '1px solid var(--color-border)',
+                          background: todo.completed ? 'var(--color-bg-tertiary)' : 'var(--color-bg)',
+                          opacity: todo.completed ? 0.6 : 1
+                        }}
+                      >
+                        <button
+                          onClick={() => toggleTodo(todo.id)}
+                          className="w-5 h-5 flex items-center justify-center text-xs font-bold"
+                          style={{
+                            border: '2px solid var(--color-border)',
+                            background: todo.completed ? 'var(--color-success)' : 'transparent',
+                            color: todo.completed ? '#fff' : 'var(--color-text)'
+                          }}
+                        >
+                          {todo.completed ? '✓' : ''}
+                        </button>
+                        <div className="flex-1">
+                          <div
+                            className="text-sm"
+                            style={{ textDecoration: todo.completed ? 'line-through' : 'none' }}
+                          >
+                            {todo.title}
+                          </div>
+                          <div className="flex gap-2 mt-1">
+                            {todo.priority && (
+                              <span
+                                className="text-xs px-1"
+                                style={{
+                                  background: todo.priority === 'high' ? 'var(--color-error)' : todo.priority === 'medium' ? 'var(--color-warning)' : 'var(--color-bg-tertiary)',
+                                  color: todo.priority === 'high' ? '#fff' : 'var(--color-text)'
+                                }}
+                              >
+                                {todo.priority.toUpperCase()}
+                              </span>
+                            )}
+                            {todo.due_date && (
+                              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                                {todo.due_date}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteTodo(todo.id)}
+                          className="btn btn-danger"
+                          style={{ padding: '2px 6px', fontSize: '9px' }}
+                        >
+                          X
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ===== SETTINGS ===== */}
           {tab === "settings" && !selectedMemo && (
             <div className="space-y-3">
               <div className="card" style={{ padding: '8px' }}>
-                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>API_KEY</div>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>구글 제미나이 키 값</div>
                 <input
                   type="password"
                   value={apiKey}
@@ -662,6 +899,44 @@ function App() {
                 <select value={language} onChange={(e) => setLanguage(e.target.value)} className="input" style={{ fontSize: '11px', padding: '4px 6px' }}>
                   {languages.map((lang) => <option key={lang.code} value={lang.code}>{lang.name}</option>)}
                 </select>
+              </div>
+
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>화면 크기 ({zoomLevel}%)</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const newZoom = Math.max(70, zoomLevel - 10);
+                      setZoomLevel(newZoom);
+                      document.documentElement.style.fontSize = `${newZoom}%`;
+                    }}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 10px', fontSize: '12px' }}
+                  >−</button>
+                  <input
+                    type="range"
+                    min="70"
+                    max="150"
+                    step="10"
+                    value={zoomLevel}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      setZoomLevel(val);
+                      document.documentElement.style.fontSize = `${val}%`;
+                    }}
+                    className="flex-1"
+                    style={{ height: '20px' }}
+                  />
+                  <button
+                    onClick={() => {
+                      const newZoom = Math.min(150, zoomLevel + 10);
+                      setZoomLevel(newZoom);
+                      document.documentElement.style.fontSize = `${newZoom}%`;
+                    }}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 10px', fontSize: '12px' }}
+                  >+</button>
+                </div>
               </div>
 
               <button onClick={handleSaveSettings} className="btn btn-primary w-full" style={{ padding: '6px 12px', fontSize: '11px' }}>SAVE_SETTINGS</button>

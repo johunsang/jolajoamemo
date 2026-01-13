@@ -1,3 +1,4 @@
+use chrono::Datelike;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -9,6 +10,22 @@ const EMBEDDING_MODEL: &str = "text-embedding-004";
 const INPUT_PRICE_PER_M: f64 = 0.10;
 const OUTPUT_PRICE_PER_M: f64 = 0.40;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScheduleInfo {
+    pub title: String,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+    pub location: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TodoInfo {
+    pub title: String,
+    pub priority: Option<String>,  // high, medium, low
+    pub due_date: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnalysisResult {
     pub title: String,
@@ -17,6 +34,10 @@ pub struct AnalysisResult {
     pub category: String,
     pub tags: Vec<String>,
     pub should_merge_with: Option<i64>,
+    #[serde(default)]
+    pub schedules: Vec<ScheduleInfo>,
+    #[serde(default)]
+    pub todos: Vec<TodoInfo>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -107,7 +128,7 @@ pub async fn analyze_memo(
 1. 입력 텍스트를 분석해서 깔끔하게 포맷팅하세요
 2. 적절한 제목을 생성하세요
 3. 한 줄 요약을 만드세요
-4. 카테고리를 지정하세요 (연락처, 회의, 아이디어, 할일, 메모, 코드, 기타 중 선택)
+4. 카테고리를 자유롭게 생성하세요 (2~4글자 한국어, 예: 연락처, 회의록, 아이디어, 여행, 요리 등)
 5. 관련 태그를 추출하세요
 6. 기존 메모 중 내용이 매우 유사한 것이 있다면 병합 대상 ID를 지정하세요
 
@@ -259,8 +280,23 @@ pub async fn analyze_multi_memo(
             .join("\n")
     };
 
+    // 현재 날짜/시간 가져오기
+    let now = chrono::Local::now();
+    let current_datetime = now.format("%Y-%m-%d %H:%M").to_string();
+    let current_weekday = match now.weekday() {
+        chrono::Weekday::Mon => "월요일",
+        chrono::Weekday::Tue => "화요일",
+        chrono::Weekday::Wed => "수요일",
+        chrono::Weekday::Thu => "목요일",
+        chrono::Weekday::Fri => "금요일",
+        chrono::Weekday::Sat => "토요일",
+        chrono::Weekday::Sun => "일요일",
+    };
+
     let prompt = format!(
         r#"당신은 메모 정리 AI입니다. 사용자가 입력한 텍스트를 분석하세요.
+
+## 현재 시간: {} ({})
 
 ## 입력된 텍스트:
 {}
@@ -269,12 +305,38 @@ pub async fn analyze_multi_memo(
 {}
 
 ## 중요 작업:
-1. 입력 텍스트에 여러 개의 다른 주제/항목이 있으면 각각 분리하세요
-2. 각 항목을 깔끔하게 포맷팅하세요
-3. 각 항목에 적절한 제목, 요약, 카테고리, 태그를 부여하세요
-4. 기존 메모와 매우 유사한 내용이면 병합 대상 ID를 지정하세요
 
-카테고리: 연락처, 회의, 아이디어, 할일, 메모, 코드, 기타
+### 1. 텍스트 분리 (매우 중요!)
+- 입력에 여러 주제가 섞여 있으면 **반드시 분리**하세요
+- 예: "철수 010-1234-5678, 내일 3시 미팅, 우유 사기" → 연락처 1개 + 일정 1개 + 할일 1개로 분리
+- 같은 주제면 하나로 합치세요
+
+### 2. 스마트 분류 (AI 자율 판단)
+- 카테고리를 너가 내용을 보고 직접 만들어
+- 간결하고 직관적인 한국어 카테고리명 사용 (2~4글자)
+- 예: 연락처, 회의록, 아이디어, 코드, 요리, 여행, 건강, 쇼핑, 공부, 일기 등
+- 내용에 가장 적합한 카테고리를 자유롭게 생성해
+
+### 3. 병합 규칙 (중요!)
+- 같은 사람의 연락처가 있으면 → 병합 (정보 추가)
+- 같은 주제의 회의록이 있으면 → 병합 (내용 추가)
+- 같은 프로젝트/아이디어면 → 병합
+- **다른 주제면 절대 병합하지 마세요!**
+
+### 4. 일정 추출 (실제 날짜로 변환 필수!)
+- "내일" → 현재시간+1일 계산해서 "2026-01-15T09:00" 형식으로
+- "다음주 월요일" → 실제 날짜 계산해서 "2026-01-20" 형식으로
+- "7일 후" → 실제 날짜 계산해서 "2026-01-21" 형식으로
+- **절대로 "내일", "7일 후" 같은 상대적 표현 사용 금지!**
+- **반드시 YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM 형식의 실제 날짜로 변환!**
+- 시간 언급 없으면 시간 부분 생략 (예: "2026-01-15")
+
+### 5. 할일 추출
+- "~해야 함", "~할 것", "~하기", "~까지" → 할일로 추출
+- 긴급/급함/ASAP → priority: "high"
+- 기한 있으면 → due_date를 실제 날짜로 계산 (예: "2026-01-15")
+- 기한 없으면 → due_date: null
+- **마찬가지로 "내일까지" → 실제 날짜 "2026-01-15"로 변환!**
 
 ## 응답 형식 (JSON 배열):
 {{
@@ -285,21 +347,30 @@ pub async fn analyze_multi_memo(
       "summary": "한줄요약1",
       "category": "카테고리1",
       "tags": ["태그"],
-      "should_merge_with": null
-    }},
-    {{
-      "title": "제목2",
-      "formatted_content": "정리된 내용2",
-      "summary": "한줄요약2",
-      "category": "카테고리2",
-      "tags": ["태그"],
-      "should_merge_with": null
+      "should_merge_with": null,
+      "schedules": [
+        {{
+          "title": "일정 제목",
+          "start_time": "2026-01-15T15:00",
+          "end_time": "2026-01-15T16:00",
+          "location": "장소",
+          "description": "설명"
+        }}
+      ],
+      "todos": [
+        {{
+          "title": "할일 내용",
+          "priority": "high",
+          "due_date": "2026-01-15"
+        }}
+      ]
     }}
   ]
 }}
 
+일정/할일이 없으면 각각 빈 배열 []로 두세요.
 하나의 주제만 있으면 items에 1개만 넣으세요."#,
-        content, existing_info
+        current_datetime, current_weekday, content, existing_info
     );
 
     let response = client

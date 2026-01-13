@@ -37,6 +37,30 @@ pub struct Settings {
     pub language: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Schedule {
+    pub id: i64,
+    pub memo_id: Option<i64>,
+    pub title: String,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+    pub location: Option<String>,
+    pub description: Option<String>,
+    pub google_event_id: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Todo {
+    pub id: i64,
+    pub memo_id: Option<i64>,
+    pub title: String,
+    pub completed: bool,
+    pub priority: Option<String>,  // high, medium, low
+    pub due_date: Option<String>,
+    pub created_at: String,
+}
+
 pub fn init_db(app_dir: PathBuf) -> Result<()> {
     let db_path = app_dir.join("jolajoamemo.db");
     std::fs::create_dir_all(&app_dir).ok();
@@ -74,6 +98,35 @@ pub fn init_db(app_dir: PathBuf) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_memos_category ON memos(category);
         CREATE INDEX IF NOT EXISTS idx_memos_tags ON memos(tags);
+
+        CREATE TABLE IF NOT EXISTS schedules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memo_id INTEGER,
+            title TEXT NOT NULL,
+            start_time TEXT,
+            end_time TEXT,
+            location TEXT,
+            description TEXT,
+            google_event_id TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (memo_id) REFERENCES memos(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_schedules_start ON schedules(start_time);
+
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memo_id INTEGER,
+            title TEXT NOT NULL,
+            completed INTEGER DEFAULT 0,
+            priority TEXT,
+            due_date TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (memo_id) REFERENCES memos(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_todos_completed ON todos(completed);
+        CREATE INDEX IF NOT EXISTS idx_todos_due ON todos(due_date);
 
         INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'ko');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('gemini_api_key', '');
@@ -234,5 +287,152 @@ pub fn update_memo_full(id: i64, title: &str, formatted_content: &str, category:
 pub fn delete_memo(id: i64) -> Result<()> {
     let conn = get_db().lock();
     conn.execute("DELETE FROM memos WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+// ===== 일정 관련 함수 =====
+
+// 일정 저장
+pub fn save_schedule(schedule: &Schedule) -> Result<i64> {
+    let conn = get_db().lock();
+    conn.execute(
+        "INSERT INTO schedules (memo_id, title, start_time, end_time, location, description, google_event_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            schedule.memo_id,
+            schedule.title,
+            schedule.start_time,
+            schedule.end_time,
+            schedule.location,
+            schedule.description,
+            schedule.google_event_id
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+// 모든 일정 조회
+pub fn get_all_schedules() -> Result<Vec<Schedule>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, memo_id, title, start_time, end_time, location, description, google_event_id, created_at
+         FROM schedules ORDER BY start_time ASC"
+    )?;
+
+    let schedules = stmt.query_map([], |row| {
+        Ok(Schedule {
+            id: row.get(0)?,
+            memo_id: row.get(1)?,
+            title: row.get(2)?,
+            start_time: row.get(3)?,
+            end_time: row.get(4)?,
+            location: row.get(5)?,
+            description: row.get(6)?,
+            google_event_id: row.get(7)?,
+            created_at: row.get(8)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(schedules)
+}
+
+// 일정의 memo_id 조회
+pub fn get_schedule_memo_id(id: i64) -> Result<Option<i64>> {
+    let conn = get_db().lock();
+    match conn.query_row(
+        "SELECT memo_id FROM schedules WHERE id = ?1",
+        params![id],
+        |row| row.get::<_, Option<i64>>(0),
+    ) {
+        Ok(memo_id) => Ok(memo_id),
+        Err(_) => Ok(None),
+    }
+}
+
+// 일정 삭제
+pub fn delete_schedule(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM schedules WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+// Google 이벤트 ID 업데이트
+pub fn update_schedule_google_id(id: i64, google_event_id: &str) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute(
+        "UPDATE schedules SET google_event_id = ?1 WHERE id = ?2",
+        params![google_event_id, id],
+    )?;
+    Ok(())
+}
+
+// ===== 할일 관련 함수 =====
+
+// 할일 저장
+pub fn save_todo(todo: &Todo) -> Result<i64> {
+    let conn = get_db().lock();
+    conn.execute(
+        "INSERT INTO todos (memo_id, title, completed, priority, due_date) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            todo.memo_id,
+            todo.title,
+            todo.completed as i32,
+            todo.priority,
+            todo.due_date
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+// 모든 할일 조회
+pub fn get_all_todos() -> Result<Vec<Todo>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, memo_id, title, completed, priority, due_date, created_at
+         FROM todos ORDER BY completed ASC, due_date ASC, created_at DESC"
+    )?;
+
+    let todos = stmt.query_map([], |row| {
+        Ok(Todo {
+            id: row.get(0)?,
+            memo_id: row.get(1)?,
+            title: row.get(2)?,
+            completed: row.get::<_, i32>(3)? != 0,
+            priority: row.get(4)?,
+            due_date: row.get(5)?,
+            created_at: row.get(6)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(todos)
+}
+
+// 할일 완료 토글
+pub fn toggle_todo(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute(
+        "UPDATE todos SET completed = NOT completed WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(())
+}
+
+// 할일의 memo_id 조회
+pub fn get_todo_memo_id(id: i64) -> Result<Option<i64>> {
+    let conn = get_db().lock();
+    match conn.query_row(
+        "SELECT memo_id FROM todos WHERE id = ?1",
+        params![id],
+        |row| row.get::<_, Option<i64>>(0),
+    ) {
+        Ok(memo_id) => Ok(memo_id),
+        Err(_) => Ok(None),
+    }
+}
+
+// 할일 삭제
+pub fn delete_todo(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM todos WHERE id = ?1", params![id])?;
     Ok(())
 }

@@ -1,7 +1,7 @@
 mod ai;
 mod db;
 
-use db::Memo;
+use db::{Memo, Schedule, Todo};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
@@ -15,6 +15,8 @@ pub struct InputResult {
     pub input_tokens: i64,
     pub output_tokens: i64,
     pub cost_usd: f64,
+    pub schedules_added: i32,
+    pub todos_added: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -64,8 +66,12 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
     let mut merged_count = 0;
     let mut titles: Vec<String> = Vec::new();
 
+    let mut schedules_added = 0;
+    let mut todos_added = 0;
+
     for analysis in items {
         let tags_str = analysis.tags.join(", ");
+        let mut memo_id: Option<i64> = None;
 
         // 병합 또는 새로 저장
         if let Some(merge_id) = analysis.should_merge_with {
@@ -91,39 +97,80 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
                 )
                 .map_err(|e| e.to_string())?;
 
+                memo_id = Some(merge_id);
                 merged_count += 1;
                 titles.push(format!("{}(병합)", existing.title));
-                continue;
             }
+        } else {
+            // 새 메모 저장
+            let new_memo = Memo {
+                id: 0,
+                title: analysis.title.clone(),
+                content: content.clone(),
+                formatted_content: analysis.formatted_content,
+                summary: analysis.summary,
+                category: analysis.category,
+                tags: tags_str,
+                embedding: None,
+                created_at: String::new(),
+                updated_at: String::new(),
+            };
+
+            let new_id = db::save_memo(&new_memo).map_err(|e| e.to_string())?;
+            memo_id = Some(new_id);
+            saved_count += 1;
+            titles.push(analysis.title);
         }
 
-        // 새 메모 저장
-        let new_memo = Memo {
-            id: 0,
-            title: analysis.title.clone(),
-            content: content.clone(),
-            formatted_content: analysis.formatted_content,
-            summary: analysis.summary,
-            category: analysis.category,
-            tags: tags_str,
-            embedding: None,
-            created_at: String::new(),
-            updated_at: String::new(),
-        };
+        // 일정 저장 (메모와 연결)
+        for schedule_info in analysis.schedules {
+            let schedule = Schedule {
+                id: 0,
+                memo_id,  // 원본 메모와 연결
+                title: schedule_info.title,
+                start_time: schedule_info.start_time,
+                end_time: schedule_info.end_time,
+                location: schedule_info.location,
+                description: schedule_info.description,
+                google_event_id: None,
+                created_at: String::new(),
+            };
+            db::save_schedule(&schedule).map_err(|e| e.to_string())?;
+            schedules_added += 1;
+        }
 
-        db::save_memo(&new_memo).map_err(|e| e.to_string())?;
-        saved_count += 1;
-        titles.push(analysis.title);
+        // 할일 저장 (메모와 연결)
+        for todo_info in analysis.todos {
+            let todo = Todo {
+                id: 0,
+                memo_id,  // 원본 메모와 연결
+                title: todo_info.title,
+                completed: false,
+                priority: todo_info.priority,
+                due_date: todo_info.due_date,
+                created_at: String::new(),
+            };
+            db::save_todo(&todo).map_err(|e| e.to_string())?;
+            todos_added += 1;
+        }
     }
 
+    let extra_msg = match (schedules_added > 0, todos_added > 0) {
+        (true, true) => format!(" (일정 {}개, 할일 {}개)", schedules_added, todos_added),
+        (true, false) => format!(" (일정 {}개)", schedules_added),
+        (false, true) => format!(" (할일 {}개)", todos_added),
+        (false, false) => String::new(),
+    };
+
     let message = if titles.len() == 1 {
-        format!("'{}' 저장됨", titles[0])
+        format!("'{}' 저장됨{}", titles[0], extra_msg)
     } else {
         format!(
-            "{}개 저장, {}개 병합: {}",
+            "{}개 저장, {}개 병합: {}{}",
             saved_count,
             merged_count,
-            titles.join(", ")
+            titles.join(", "),
+            extra_msg
         )
     };
 
@@ -136,6 +183,8 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
         cost_usd: usage.cost_usd,
+        schedules_added,
+        todos_added,
     })
 }
 
@@ -253,6 +302,44 @@ fn delete_all_memos() -> Result<usize, String> {
     db::delete_all_memos().map_err(|e| e.to_string())
 }
 
+// 모든 일정 조회
+#[tauri::command]
+fn get_schedules() -> Result<Vec<Schedule>, String> {
+    db::get_all_schedules().map_err(|e| e.to_string())
+}
+
+// 일정 삭제 (원본 메모도 함께 삭제)
+#[tauri::command]
+fn delete_schedule(id: i64) -> Result<(), String> {
+    // 먼저 연결된 메모 ID 조회
+    if let Ok(Some(memo_id)) = db::get_schedule_memo_id(id) {
+        db::delete_memo(memo_id).ok(); // 메모 삭제 (실패해도 계속)
+    }
+    db::delete_schedule(id).map_err(|e| e.to_string())
+}
+
+// 모든 할일 조회
+#[tauri::command]
+fn get_todos() -> Result<Vec<Todo>, String> {
+    db::get_all_todos().map_err(|e| e.to_string())
+}
+
+// 할일 완료 토글
+#[tauri::command]
+fn toggle_todo(id: i64) -> Result<(), String> {
+    db::toggle_todo(id).map_err(|e| e.to_string())
+}
+
+// 할일 삭제 (원본 메모도 함께 삭제)
+#[tauri::command]
+fn delete_todo(id: i64) -> Result<(), String> {
+    // 먼저 연결된 메모 ID 조회
+    if let Ok(Some(memo_id)) = db::get_todo_memo_id(id) {
+        db::delete_memo(memo_id).ok(); // 메모 삭제 (실패해도 계속)
+    }
+    db::delete_todo(id).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -273,7 +360,12 @@ pub fn run() {
             import_db,
             update_memo,
             delete_memo,
-            delete_all_memos
+            delete_all_memos,
+            get_schedules,
+            delete_schedule,
+            get_todos,
+            toggle_todo,
+            delete_todo
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
