@@ -212,3 +212,20 @@ pub fn get_today_usage() -> Result<(i64, i64, f64)> {
     ).unwrap_or((0, 0, 0.0));
     Ok(result)
 }
+
+// 메모 전체 업데이트 (편집용)
+pub fn update_memo_full(id: i64, title: &str, formatted_content: &str, category: &str, tags: &str) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute(
+        "UPDATE memos SET title = ?1, formatted_content = ?2, category = ?3, tags = ?4, updated_at = datetime('now') WHERE id = ?5",
+        params![title, formatted_content, category, tags, id],
+    )?;
+    Ok(())
+}
+
+// 메모 삭제
+pub fn delete_memo(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM memos WHERE id = ?1", params![id])?;
+    Ok(())
+}

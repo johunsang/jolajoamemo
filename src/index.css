@@ -1,56 +1,333 @@
 @import "tailwindcss";
 
+/*
+ * Brutalist Theme - 거칠고 원시적인
+ */
+
+:root {
+  /* Colors - Light Mode */
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f5f5f5;
+  --color-bg-tertiary: #e5e5e5;
+  --color-text: #000000;
+  --color-text-secondary: #333333;
+  --color-text-muted: #666666;
+  --color-accent: #0000ff;
+  --color-accent-hover: #0000cc;
+  --color-error: #ff0000;
+  --color-success: #00cc00;
+  --color-warning: #ffcc00;
+  --color-border: #000000;
+
+  /* Typography */
+  --font-display: 'IBM Plex Mono', 'D2Coding', ui-monospace, monospace;
+  --font-body: 'IBM Plex Mono', 'D2Coding', ui-monospace, monospace;
+  --font-mono: 'IBM Plex Mono', 'D2Coding', ui-monospace, monospace;
+
+  /* Spacing */
+  --space-base: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+
+  /* Border Radius - 없음 (브루탈리스트) */
+  --radius: 0;
+
+  /* Borders */
+  --border-width: 2px;
+  --border-width-thick: 3px;
+
+  /* Shadows */
+  --shadow-hard: 4px 4px 0 var(--color-border);
+  --shadow-hard-sm: 2px 2px 0 var(--color-border);
+}
+
+/* Dark Mode */
+.dark {
+  --color-bg: #0a0a0a;
+  --color-bg-secondary: #141414;
+  --color-bg-tertiary: #1f1f1f;
+  --color-text: #ffffff;
+  --color-text-secondary: #cccccc;
+  --color-text-muted: #888888;
+  --color-accent: #5555ff;
+  --color-accent-hover: #7777ff;
+  --color-error: #ff5555;
+  --color-success: #55ff55;
+  --color-warning: #ffee55;
+  --color-border: #ffffff;
+}
+
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 body {
-    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
-    background: #000;
-    color: #fff;
-    min-height: 100vh;
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  font-size: 18px;
+  line-height: 1.7;
 }
 
 #root {
-    min-height: 100vh;
+  min-height: 100vh;
 }
 
-/* Brutalist Scrollbar */
+/* 터미널 커서 */
+body::after {
+  content: '█';
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  font-size: 1.25rem;
+  animation: blink 1s step-end infinite;
+  color: var(--color-accent);
+  z-index: 9999;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* 스크롤바 */
 ::-webkit-scrollbar {
-    width: 8px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-    background: #000;
-    border-left: 1px solid #333;
+  background: var(--color-bg-secondary);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #fff;
+  background: var(--color-text-muted);
 }
 
-/* Brutalist Input */
-input,
-textarea,
-select {
-    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+::placeholder {
+  color: var(--color-text-muted);
+  font-style: italic;
 }
 
-/* Animations */
-@keyframes blink {
-    0%,
-    50% {
-        opacity: 1;
-    }
-    51%,
-    100% {
-        opacity: 0;
-    }
+/* 로딩 스피너 */
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-.cursor-blink::after {
-    content: "_";
-    animation: blink 1s infinite;
+.loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-bg-tertiary);
+  border-top-color: var(--color-text);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
+
+/* ====== 브루탈리스트 컴포넌트 스타일 ====== */
+
+/* 버튼 기본 */
+.btn {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 16px;
+  letter-spacing: 0.03em;
+  border: var(--border-width) solid var(--color-border);
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--color-border);
+}
+
+.btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+
+/* 메인 버튼 */
+.btn-primary {
+  background: var(--color-accent);
+  color: #ffffff;
+  box-shadow: var(--shadow-hard);
+}
+
+.btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.btn-primary:disabled {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 보조 버튼 */
+.btn-secondary {
+  background: var(--color-bg);
+  color: var(--color-text);
+  box-shadow: var(--shadow-hard-sm);
+}
+
+.btn-secondary:hover {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* 위험 버튼 */
+.btn-danger {
+  background: var(--color-bg);
+  color: var(--color-error);
+  border-color: var(--color-error);
+  box-shadow: 2px 2px 0 var(--color-error);
+}
+
+.btn-danger:hover {
+  background: var(--color-error);
+  color: var(--color-bg);
+}
+
+/* 활성 메뉴 버튼 */
+.btn-active {
+  background: var(--color-text);
+  color: var(--color-bg);
+  box-shadow: none;
+  transform: translate(2px, 2px);
+}
+
+/* 입력창 */
+.input {
+  background: var(--color-bg);
+  border: var(--border-width) solid var(--color-border);
+  padding: 1rem 1.25rem;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  width: 100%;
+}
+
+.input:focus {
+  outline: none;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+/* 카드 */
+.card {
+  background: var(--color-bg);
+  border: var(--border-width) solid var(--color-border);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-hard);
+}
+
+.card-header {
+  border-bottom: var(--border-width) solid var(--color-border);
+  padding-bottom: var(--space-base);
+  margin-bottom: var(--space-lg);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+}
+
+/* 상태 표시 */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status::before {
+  content: '●';
+  font-size: 8px;
+}
+
+.status-success::before { color: var(--color-success); }
+.status-error::before { color: var(--color-error); }
+.status-warning::before { color: var(--color-warning); }
+
+/* 코드 블록 */
+.code-block {
+  background: var(--color-bg-secondary);
+  border: var(--border-width) solid var(--color-border);
+  padding: var(--space-base);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* 카테고리 */
+.category {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+  padding: 0.75rem 1rem;
+  border: var(--border-width) solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.category:hover {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* 태그 */
+.tag {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-transform: uppercase;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* 섹션 라벨 */
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+
+.section-label::before {
+  content: '// ';
+  color: var(--color-accent);
+}
+
+/* 다크모드 토글 */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: var(--border-width) solid var(--color-border);
+  background: var(--color-bg-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.theme-toggle:hover {
+  background: var(--color-text);
+  color: var(--color-bg);
 }

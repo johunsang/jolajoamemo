@@ -37,9 +37,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY1NzcyNEUzNTBGNDY2QjcKUldTM1p2UlE0eVIzOVJUVkU5STNxRmlHYXJDem1vdjV0enAzK2d3M095QWtEczdkamd1alpZUkwK",
       "endpoints": [
-        "https://github.com/hunsangjo/jolajoamemo/releases/latest/download/latest.json"
+        "https://github.com/user/jolajoamemo/releases/latest/download/latest.json"
       ]
     }
   }

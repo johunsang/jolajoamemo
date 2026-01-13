@@ -1,35 +1,87 @@
 {
   "app": {
-    "title": "JolaJoa Memo",
-    "input": "Eingabe",
+    "title": "JolaJoa",
+    "subtitle": "AI Memo System",
+    "newMemo": "Neue Notiz",
+    "search": "Suchen",
+    "settings": "Einstellungen",
+    "memos": "Notizen",
+    "noMemosYet": "Noch keine Notizen"
+  },
+  "nav": {
+    "newMemo": "Neue Notiz",
     "search": "Suchen",
     "settings": "Einstellungen"
   },
   "input": {
-    "placeholder": "Fügen Sie hier etwas ein...\n\nBeispiele:\n- Max Mustermann 010-1234-5678\n- Besprechungsnotizen\n- Ideen\n- Code-Snippets",
+    "title": "Daten eingeben",
+    "description": "Kontakte, Besprechungsnotizen, Ideen, Code-Snippets...\nKI organisiert und kategorisiert alles automatisch.",
+    "placeholder": "Hier einfügen oder tippen...",
     "submit": "Speichern",
-    "analyzing": "KI analysiert...",
+    "processing": "Verarbeitung...",
     "success": "Gespeichert!",
     "merged": "Mit bestehender Notiz zusammengeführt"
   },
   "search": {
-    "placeholder": "Stellen Sie eine Frage... (z.B.: Was ist Max' Telefonnummer?)",
-    "submit": "Suchen",
-    "thinking": "Denke nach...",
-    "noMemos": "Keine Notizen gespeichert"
+    "title": "Frag mich alles",
+    "description": "KI durchsucht deine Notizen und beantwortet deine Fragen.",
+    "placeholder": "Was möchtest du wissen?",
+    "submit": "Los",
+    "thinking": "...",
+    "aiResponse": "KI-Antwort",
+    "noMemos": "Noch keine Notizen gespeichert"
   },
   "settings": {
+    "title": "Einstellungen",
+    "description": "API-Schlüssel und Spracheinstellungen konfigurieren.",
     "apiKey": "Gemini API-Schlüssel",
-    "apiKeyPlaceholder": "API-Schlüssel eingeben",
+    "apiKeyPlaceholder": "API-Schlüssel eingeben...",
+    "apiKeyGuide": "So erhältst du einen API-Schlüssel:",
+    "apiKeyStep1": "Besuche die Website",
+    "apiKeyStep2": "Mit Google-Konto anmelden",
+    "apiKeyStep3": "Klicke auf \"API-Schlüssel erstellen\"",
+    "apiKeyStep4": "Kopiere den Schlüssel und füge ihn oben ein",
+    "apiKeyNote": "* Gemini API ist kostenlos nutzbar (tägliche Limits gelten)",
     "language": "Sprache",
     "save": "Speichern",
-    "saved": "Gespeichert!"
+    "saved": "Gespeichert!",
+    "dataBackup": "Daten-Backup",
+    "export": "Exportieren",
+    "import": "Importieren",
+    "exportComplete": "Export abgeschlossen!",
+    "importComplete": " Notizen importiert!"
+  },
+  "memo": {
+    "content": "Inhalt",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "close": "Schließen",
+    "created": "Erstellt",
+    "updated": "Aktualisiert"
+  },
+  "edit": {
+    "title": "Notiz bearbeiten",
+    "description": "Bearbeite die Notizdetails unten.",
+    "memoTitle": "Titel",
+    "category": "Kategorie",
+    "categoryNew": "Oder neu eingeben...",
+    "tags": "Tags (durch Komma getrennt)",
+    "tagsPlaceholder": "tag1, tag2, tag3",
+    "content": "Inhalt",
+    "save": "Änderungen speichern",
+    "cancel": "Abbrechen",
+    "saved": "Gespeichert!",
+    "deleted": "Gelöscht!",
+    "categoryRenamed": "Kategorie umbenannt!"
   },
   "usage": {
-    "today": "Heutige Nutzung",
-    "tokens": "Token",
-    "input": "Eingabe",
-    "output": "Ausgabe",
+    "tokens": "Tokens",
     "cost": "Kosten"
+  },
+  "confirm": {
+    "delete": "Möchtest du dies wirklich löschen?"
+  },
+  "error": {
+    "prefix": "Fehler"
   }
 }

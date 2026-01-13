@@ -1,35 +1,87 @@
 {
   "app": {
-    "title": "JolaJoa Memo",
-    "input": "Input",
+    "title": "JolaJoa",
+    "subtitle": "AI Memo System",
+    "newMemo": "New Memo",
+    "search": "Search",
+    "settings": "Settings",
+    "memos": "Memos",
+    "noMemosYet": "No memos yet"
+  },
+  "nav": {
+    "newMemo": "New Memo",
     "search": "Search",
     "settings": "Settings"
   },
   "input": {
-    "placeholder": "Paste anything here...\n\nExamples:\n- John Doe 010-1234-5678\n- Meeting notes\n- Ideas\n- Code snippets",
+    "title": "Drop Your Data",
+    "description": "Contacts, meeting notes, ideas, code snippets...\nAI will organize and categorize everything automatically.",
+    "placeholder": "Paste or type here...",
     "submit": "Save",
-    "analyzing": "AI analyzing...",
+    "processing": "Processing...",
     "success": "Saved!",
     "merged": "Merged with existing memo"
   },
   "search": {
-    "placeholder": "Ask a question... (e.g., What's John's phone number?)",
-    "submit": "Search",
-    "thinking": "Thinking...",
+    "title": "Ask Anything",
+    "description": "AI will search through your memos and answer your questions.",
+    "placeholder": "What do you want to know?",
+    "submit": "Go",
+    "thinking": "...",
+    "aiResponse": "AI Response",
     "noMemos": "No memos saved yet"
   },
   "settings": {
+    "title": "Settings",
+    "description": "Set up your API key and language preferences.",
     "apiKey": "Gemini API Key",
-    "apiKeyPlaceholder": "Enter your API key",
+    "apiKeyPlaceholder": "Enter your API key...",
+    "apiKeyGuide": "How to get an API key:",
+    "apiKeyStep1": "Visit the website",
+    "apiKeyStep2": "Sign in with your Google account",
+    "apiKeyStep3": "Click \"Create API Key\" button",
+    "apiKeyStep4": "Copy the key and paste it above",
+    "apiKeyNote": "* Gemini API is free to use (daily limits apply)",
     "language": "Language",
-    "save": "Save",
-    "saved": "Saved!"
+    "save": "Save Settings",
+    "saved": "Saved!",
+    "dataBackup": "Data Backup",
+    "export": "Export",
+    "import": "Import",
+    "exportComplete": "Export complete!",
+    "importComplete": " memos imported!"
+  },
+  "memo": {
+    "content": "Content",
+    "edit": "Edit",
+    "delete": "Delete",
+    "close": "Close",
+    "created": "Created",
+    "updated": "Updated"
+  },
+  "edit": {
+    "title": "Edit Memo",
+    "description": "Modify your memo details below.",
+    "memoTitle": "Title",
+    "category": "Category",
+    "categoryNew": "Or type new...",
+    "tags": "Tags (comma separated)",
+    "tagsPlaceholder": "tag1, tag2, tag3",
+    "content": "Content",
+    "save": "Save Changes",
+    "cancel": "Cancel",
+    "saved": "Saved!",
+    "deleted": "Deleted!",
+    "categoryRenamed": "Category renamed!"
   },
   "usage": {
-    "today": "Today's Usage",
-    "tokens": "tokens",
-    "input": "Input",
-    "output": "Output",
+    "tokens": "Tokens",
     "cost": "Cost"
+  },
+  "confirm": {
+    "delete": "Are you sure you want to delete this?"
+  },
+  "error": {
+    "prefix": "Error"
   }
 }

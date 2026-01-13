@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., 0.1.0)'
+        required: true
+        default: '0.1.0'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+            name: 'macOS-ARM64'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+            name: 'macOS-Intel'
+          - platform: 'windows-latest'
+            args: ''
+            name: 'Windows'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'JolaJoa Memo v__VERSION__'
+          releaseBody: |
+            ## JolaJoa Memo v__VERSION__
+
+            AI가 알아서 정리하는 스마트 메모장
+
+            ### Downloads
+
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon M1/M2/M3) | `JolaJoa Memo_x.x.x_aarch64.dmg` |
+            | macOS (Intel) | `JolaJoa Memo_x.x.x_x64.dmg` |
+            | Windows | `JolaJoa Memo_x.x.x_x64-setup.exe` |
+
+            ### Requirements
+            - [Gemini API Key](https://aistudio.google.com/apikey) (무료)
+
+            ### Features
+            - AI 자동 메모 정리 (제목, 카테고리, 태그)
+            - 자연어 검색
+            - 실시간 자동저장
+            - 드래그 앤 드롭 카테고리 이동
+            - 다크모드
+            - 다국어 지원 (한/영/일/중/불)
+
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

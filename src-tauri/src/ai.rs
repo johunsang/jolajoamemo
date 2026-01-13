@@ -16,7 +16,12 @@ pub struct AnalysisResult {
     pub summary: String,
     pub category: String,
     pub tags: Vec<String>,
-    pub should_merge_with: Option<i64>, // 병합할 메모 ID
+    pub should_merge_with: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MultiAnalysisResult {
+    pub items: Vec<AnalysisResult>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -233,6 +238,113 @@ pub async fn ask_question(
     };
 
     Ok((text, token_usage))
+}
+
+// 여러 개 메모 자동 분리 분석
+pub async fn analyze_multi_memo(
+    api_key: &str,
+    content: &str,
+    existing_memos: &[(i64, String, String)],
+) -> Result<(Vec<AnalysisResult>, TokenUsage), String> {
+    let client = Client::new();
+
+    let existing_info = if existing_memos.is_empty() {
+        "없음".to_string()
+    } else {
+        existing_memos
+            .iter()
+            .take(20)
+            .map(|(id, title, summary)| format!("ID:{} - {} ({})", id, title, summary))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let prompt = format!(
+        r#"당신은 메모 정리 AI입니다. 사용자가 입력한 텍스트를 분석하세요.
+
+## 입력된 텍스트:
+{}
+
+## 기존 메모 목록:
+{}
+
+## 중요 작업:
+1. 입력 텍스트에 여러 개의 다른 주제/항목이 있으면 각각 분리하세요
+2. 각 항목을 깔끔하게 포맷팅하세요
+3. 각 항목에 적절한 제목, 요약, 카테고리, 태그를 부여하세요
+4. 기존 메모와 매우 유사한 내용이면 병합 대상 ID를 지정하세요
+
+카테고리: 연락처, 회의, 아이디어, 할일, 메모, 코드, 기타
+
+## 응답 형식 (JSON 배열):
+{{
+  "items": [
+    {{
+      "title": "제목1",
+      "formatted_content": "정리된 내용1",
+      "summary": "한줄요약1",
+      "category": "카테고리1",
+      "tags": ["태그"],
+      "should_merge_with": null
+    }},
+    {{
+      "title": "제목2",
+      "formatted_content": "정리된 내용2",
+      "summary": "한줄요약2",
+      "category": "카테고리2",
+      "tags": ["태그"],
+      "should_merge_with": null
+    }}
+  ]
+}}
+
+하나의 주제만 있으면 items에 1개만 넣으세요."#,
+        content, existing_info
+    );
+
+    let response = client
+        .post(format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            GEMINI_MODEL, api_key
+        ))
+        .json(&json!({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.3,
+                "responseMimeType": "application/json"
+            }
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("API 요청 실패: {}", e))?;
+
+    let gemini_resp: GeminiResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("응답 파싱 실패: {}", e))?;
+
+    let text = gemini_resp
+        .candidates
+        .first()
+        .and_then(|c| c.content.parts.first())
+        .map(|p| p.text.clone())
+        .ok_or("응답 없음")?;
+
+    let usage = gemini_resp.usage_metadata.unwrap_or(UsageMetadata {
+        prompt_token_count: 0,
+        candidates_token_count: 0,
+    });
+
+    let multi_result: MultiAnalysisResult = serde_json::from_str(&text)
+        .map_err(|e| format!("JSON 파싱 실패: {} - 원본: {}", e, text))?;
+
+    let token_usage = TokenUsage {
+        input_tokens: usage.prompt_token_count,
+        output_tokens: usage.candidates_token_count,
+        cost_usd: calculate_cost(usage.prompt_token_count, usage.candidates_token_count),
+    };
+
+    Ok((multi_result.items, token_usage))
 }
 
 // 임베딩 생성

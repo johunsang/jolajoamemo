@@ -1,35 +1,87 @@
 {
   "app": {
-    "title": "JolaJoa Memo",
-    "input": "Entrée",
+    "title": "JolaJoa",
+    "subtitle": "Système de Notes IA",
+    "newMemo": "Nouvelle Note",
+    "search": "Rechercher",
+    "settings": "Paramètres",
+    "memos": "Notes",
+    "noMemosYet": "Pas encore de notes"
+  },
+  "nav": {
+    "newMemo": "Nouvelle Note",
     "search": "Rechercher",
     "settings": "Paramètres"
   },
   "input": {
-    "placeholder": "Collez n'importe quoi ici...\n\nExemples:\n- Jean Dupont 010-1234-5678\n- Notes de réunion\n- Idées\n- Extraits de code",
+    "title": "Déposez vos données",
+    "description": "Contacts, notes de réunion, idées, extraits de code...\nL'IA organisera et catégorisera tout automatiquement.",
+    "placeholder": "Collez ou tapez ici...",
     "submit": "Enregistrer",
-    "analyzing": "IA en cours d'analyse...",
-    "success": "Enregistré!",
+    "processing": "Traitement...",
+    "success": "Enregistré !",
     "merged": "Fusionné avec une note existante"
   },
   "search": {
-    "placeholder": "Posez une question... (ex: Quel est le numéro de Jean?)",
-    "submit": "Rechercher",
-    "thinking": "Réflexion...",
+    "title": "Demandez n'importe quoi",
+    "description": "L'IA recherchera dans vos notes et répondra à vos questions.",
+    "placeholder": "Que voulez-vous savoir ?",
+    "submit": "Go",
+    "thinking": "...",
+    "aiResponse": "Réponse IA",
     "noMemos": "Aucune note enregistrée"
   },
   "settings": {
+    "title": "Paramètres",
+    "description": "Configurez votre clé API et vos préférences de langue.",
     "apiKey": "Clé API Gemini",
-    "apiKeyPlaceholder": "Entrez votre clé API",
+    "apiKeyPlaceholder": "Entrez votre clé API...",
+    "apiKeyGuide": "Comment obtenir une clé API :",
+    "apiKeyStep1": "Visitez le site web",
+    "apiKeyStep2": "Connectez-vous avec votre compte Google",
+    "apiKeyStep3": "Cliquez sur \"Créer une clé API\"",
+    "apiKeyStep4": "Copiez la clé et collez-la ci-dessus",
+    "apiKeyNote": "* L'API Gemini est gratuite (limites quotidiennes applicables)",
     "language": "Langue",
     "save": "Enregistrer",
-    "saved": "Enregistré!"
+    "saved": "Enregistré !",
+    "dataBackup": "Sauvegarde des données",
+    "export": "Exporter",
+    "import": "Importer",
+    "exportComplete": "Exportation terminée !",
+    "importComplete": " notes importées !"
+  },
+  "memo": {
+    "content": "Contenu",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "close": "Fermer",
+    "created": "Créé",
+    "updated": "Mis à jour"
+  },
+  "edit": {
+    "title": "Modifier la Note",
+    "description": "Modifiez les détails de votre note ci-dessous.",
+    "memoTitle": "Titre",
+    "category": "Catégorie",
+    "categoryNew": "Ou tapez nouveau...",
+    "tags": "Tags (séparés par des virgules)",
+    "tagsPlaceholder": "tag1, tag2, tag3",
+    "content": "Contenu",
+    "save": "Enregistrer les modifications",
+    "cancel": "Annuler",
+    "saved": "Enregistré !",
+    "deleted": "Supprimé !",
+    "categoryRenamed": "Catégorie renommée !"
   },
   "usage": {
-    "today": "Utilisation aujourd'hui",
-    "tokens": "jetons",
-    "input": "Entrée",
-    "output": "Sortie",
+    "tokens": "Tokens",
     "cost": "Coût"
+  },
+  "confirm": {
+    "delete": "Êtes-vous sûr de vouloir supprimer ceci ?"
+  },
+  "error": {
+    "prefix": "Erreur"
   }
 }

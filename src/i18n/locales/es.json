@@ -1,35 +1,87 @@
 {
   "app": {
-    "title": "JolaJoa Memo",
-    "input": "Entrada",
+    "title": "JolaJoa",
+    "subtitle": "Sistema de Notas AI",
+    "newMemo": "Nueva Nota",
+    "search": "Buscar",
+    "settings": "Ajustes",
+    "memos": "Notas",
+    "noMemosYet": "Aún no hay notas"
+  },
+  "nav": {
+    "newMemo": "Nueva Nota",
     "search": "Buscar",
     "settings": "Ajustes"
   },
   "input": {
-    "placeholder": "Pega cualquier cosa aquí...\n\nEjemplos:\n- Juan Pérez 010-1234-5678\n- Notas de reunión\n- Ideas\n- Fragmentos de código",
+    "title": "Ingresa tus datos",
+    "description": "Contactos, notas de reuniones, ideas, fragmentos de código...\nLa IA organizará y categorizará todo automáticamente.",
+    "placeholder": "Pega o escribe aquí...",
     "submit": "Guardar",
-    "analyzing": "AI analizando...",
+    "processing": "Procesando...",
     "success": "¡Guardado!",
     "merged": "Fusionado con nota existente"
   },
   "search": {
-    "placeholder": "Haz una pregunta... (ej: ¿Cuál es el teléfono de Juan?)",
-    "submit": "Buscar",
-    "thinking": "Pensando...",
-    "noMemos": "No hay notas guardadas"
+    "title": "Pregunta lo que quieras",
+    "description": "La IA buscará en tus notas y responderá tus preguntas.",
+    "placeholder": "¿Qué quieres saber?",
+    "submit": "Ir",
+    "thinking": "...",
+    "aiResponse": "Respuesta de IA",
+    "noMemos": "Aún no hay notas guardadas"
   },
   "settings": {
+    "title": "Ajustes",
+    "description": "Configura tu clave API y preferencias de idioma.",
     "apiKey": "Clave API de Gemini",
-    "apiKeyPlaceholder": "Ingresa tu clave API",
+    "apiKeyPlaceholder": "Ingresa tu clave API...",
+    "apiKeyGuide": "Cómo obtener una clave API:",
+    "apiKeyStep1": "Visita el sitio web",
+    "apiKeyStep2": "Inicia sesión con tu cuenta de Google",
+    "apiKeyStep3": "Haz clic en \"Crear clave API\"",
+    "apiKeyStep4": "Copia la clave y pégala arriba",
+    "apiKeyNote": "* La API de Gemini es gratuita (se aplican límites diarios)",
     "language": "Idioma",
     "save": "Guardar",
-    "saved": "¡Guardado!"
+    "saved": "¡Guardado!",
+    "dataBackup": "Copia de seguridad",
+    "export": "Exportar",
+    "import": "Importar",
+    "exportComplete": "¡Exportación completada!",
+    "importComplete": " notas importadas!"
+  },
+  "memo": {
+    "content": "Contenido",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "close": "Cerrar",
+    "created": "Creado",
+    "updated": "Actualizado"
+  },
+  "edit": {
+    "title": "Editar Nota",
+    "description": "Modifica los detalles de tu nota abajo.",
+    "memoTitle": "Título",
+    "category": "Categoría",
+    "categoryNew": "O escribe nuevo...",
+    "tags": "Etiquetas (separadas por coma)",
+    "tagsPlaceholder": "etiqueta1, etiqueta2, etiqueta3",
+    "content": "Contenido",
+    "save": "Guardar cambios",
+    "cancel": "Cancelar",
+    "saved": "¡Guardado!",
+    "deleted": "¡Eliminado!",
+    "categoryRenamed": "¡Categoría renombrada!"
   },
   "usage": {
-    "today": "Uso de hoy",
-    "tokens": "tokens",
-    "input": "Entrada",
-    "output": "Salida",
+    "tokens": "Tokens",
     "cost": "Costo"
+  },
+  "confirm": {
+    "delete": "¿Estás seguro de que quieres eliminar esto?"
+  },
+  "error": {
+    "prefix": "Error"
   }
 }

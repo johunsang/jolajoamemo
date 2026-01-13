@@ -1,0 +1,313 @@
+/*
+ * Brutalist Theme - 거칠고 원시적인
+ * 적합: 개발자 도구, 오픈소스, 인디 프로젝트
+ */
+
+:root {
+  /* Colors - 고대비 흑백 + 원색 */
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f5f5f5;
+  --color-bg-tertiary: #e5e5e5;
+  --color-text: #000000;
+  --color-text-secondary: #333333;
+  --color-text-muted: #666666;
+  --color-accent: #0000ff;
+  --color-accent-hover: #0000cc;
+  --color-error: #ff0000;
+  --color-success: #00ff00;
+  --color-warning: #ffff00;
+  --color-border: #000000;
+
+  /* Typography - 모노스페이스 중심 */
+  --font-display: 'IBM Plex Mono', 'D2Coding', monospace;
+  --font-body: 'IBM Plex Mono', 'D2Coding', monospace;
+  --font-mono: 'IBM Plex Mono', 'D2Coding', monospace;
+
+  /* Spacing - 체계적 */
+  --space-base: 1rem;
+  --space-lg: 2rem;
+  --space-xl: 4rem;
+  --space-2xl: 6rem;
+
+  /* Border Radius - 없음 */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+
+  /* Borders - 두꺼운 */
+  --border-width: 2px;
+  --border-width-thick: 4px;
+
+  /* Shadows - 하드 섀도우 */
+  --shadow-hard: 4px 4px 0 var(--color-border);
+  --shadow-hard-lg: 8px 8px 0 var(--color-border);
+}
+
+/* Dark mode */
+.dark {
+  --color-bg: #000000;
+  --color-bg-secondary: #111111;
+  --color-bg-tertiary: #222222;
+  --color-text: #ffffff;
+  --color-text-secondary: #cccccc;
+  --color-border: #ffffff;
+  --shadow-hard: 4px 4px 0 var(--color-border);
+  --shadow-hard-lg: 8px 8px 0 var(--color-border);
+}
+
+/* Base styles */
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Terminal-like cursor */
+body::after {
+  content: '█';
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  font-size: 1.5rem;
+  animation: blink 1s step-end infinite;
+  color: var(--color-accent);
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+h1::before {
+  content: '# ';
+  color: var(--color-accent);
+}
+
+h2::before {
+  content: '## ';
+  color: var(--color-accent);
+}
+
+/* ASCII art style decorations */
+.ascii-border {
+  border: none;
+  position: relative;
+  padding: var(--space-lg);
+}
+
+.ascii-border::before {
+  content: '┌' attr(data-title) '────────────────────┐';
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+/* Buttons */
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  padding: 0.75rem 1.5rem;
+  border: var(--border-width) solid var(--color-border);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  box-shadow: var(--shadow-hard);
+  transition: all 0.1s ease;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--color-border);
+}
+
+.btn-primary:active {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+
+.btn-secondary {
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: 0.75rem 1.5rem;
+  border: var(--border-width) solid var(--color-border);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+  box-shadow: var(--shadow-hard);
+  transition: all 0.1s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* Cards */
+.card {
+  background: var(--color-bg);
+  border: var(--border-width) solid var(--color-border);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-hard);
+}
+
+.card-header {
+  border-bottom: var(--border-width) solid var(--color-border);
+  padding-bottom: var(--space-base);
+  margin-bottom: var(--space-base);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Inputs */
+input, textarea {
+  background: var(--color-bg);
+  border: var(--border-width) solid var(--color-border);
+  padding: 0.75rem 1rem;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  box-shadow: var(--shadow-hard);
+}
+
+input::placeholder {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* Navigation */
+.nav {
+  background: var(--color-bg);
+  border-bottom: var(--border-width-thick) solid var(--color-border);
+  padding: var(--space-base) 0;
+}
+
+.nav a {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--color-text);
+  padding: 0.5rem;
+  border: var(--border-width) solid transparent;
+}
+
+.nav a:hover {
+  border-color: var(--color-border);
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+/* Hero section */
+.hero {
+  padding: var(--space-2xl) 0;
+  text-align: left;
+  border-bottom: var(--border-width-thick) solid var(--color-border);
+}
+
+.hero h1 {
+  font-size: 3rem;
+  line-height: 1.2;
+  margin-bottom: var(--space-lg);
+}
+
+/* Code blocks */
+.code-block {
+  background: var(--color-bg-secondary);
+  border: var(--border-width) solid var(--color-border);
+  padding: var(--space-lg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.code-block::before {
+  content: '$ ';
+  color: var(--color-accent);
+}
+
+/* Status indicators */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.status::before {
+  content: '●';
+  font-size: 8px;
+}
+
+.status-success::before { color: var(--color-success); }
+.status-error::before { color: var(--color-error); }
+.status-warning::before { color: var(--color-warning); }
+
+/* Tables - data grid style */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+th, td {
+  border: var(--border-width) solid var(--color-border);
+  padding: 0.75rem;
+  text-align: left;
+}
+
+th {
+  background: var(--color-text);
+  color: var(--color-bg);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+tr:nth-child(even) {
+  background: var(--color-bg-secondary);
+}
+
+/* Marquee effect */
+.marquee {
+  overflow: hidden;
+  border-top: var(--border-width) solid var(--color-border);
+  border-bottom: var(--border-width) solid var(--color-border);
+  padding: 0.5rem 0;
+}
+
+.marquee-content {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee 20s linear infinite;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+@keyframes marquee {
+  from { transform: translateX(100%); }
+  to { transform: translateX(-100%); }
+}

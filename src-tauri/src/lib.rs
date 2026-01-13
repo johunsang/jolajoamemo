@@ -32,7 +32,7 @@ pub struct UsageStats {
     pub today_cost_usd: f64,
 }
 
-// 입력: 텍스트를 분석해서 저장 또는 병합
+// 입력: 텍스트를 분석해서 저장 또는 병합 (여러 개 자동 분리)
 #[tauri::command]
 async fn input_memo(content: String) -> Result<InputResult, String> {
     let api_key = db::get_setting("gemini_api_key").map_err(|e| e.to_string())?;
@@ -47,8 +47,8 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
         .map(|m| (m.id, m.title.clone(), m.summary.clone()))
         .collect();
 
-    // AI 분석
-    let (analysis, usage) = ai::analyze_memo(&api_key, &content, &memo_info).await?;
+    // AI 분석 (여러 개 자동 분리)
+    let (items, usage) = ai::analyze_multi_memo(&api_key, &content, &memo_info).await?;
 
     // 사용량 기록
     db::log_api_usage(
@@ -60,68 +60,79 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
     )
     .map_err(|e| e.to_string())?;
 
-    let tags_str = analysis.tags.join(", ");
+    let mut saved_count = 0;
+    let mut merged_count = 0;
+    let mut titles: Vec<String> = Vec::new();
 
-    // 병합 또는 새로 저장
-    if let Some(merge_id) = analysis.should_merge_with {
-        // 기존 메모와 병합
-        if let Some(existing) = existing_memos.iter().find(|m| m.id == merge_id) {
-            let merged_content = format!("{}\n\n---\n\n{}", existing.content, content);
-            let merged_formatted = format!(
-                "{}\n\n---\n\n{}",
-                existing.formatted_content, analysis.formatted_content
-            );
-            let merged_tags = if existing.tags.is_empty() {
-                tags_str.clone()
-            } else {
-                format!("{}, {}", existing.tags, tags_str)
-            };
+    for analysis in items {
+        let tags_str = analysis.tags.join(", ");
 
-            db::update_memo(
-                merge_id,
-                &merged_content,
-                &merged_formatted,
-                &analysis.summary,
-                &merged_tags,
-                None,
-            )
-            .map_err(|e| e.to_string())?;
+        // 병합 또는 새로 저장
+        if let Some(merge_id) = analysis.should_merge_with {
+            if let Some(existing) = existing_memos.iter().find(|m| m.id == merge_id) {
+                let merged_content = format!("{}\n\n---\n\n{}", existing.content, &content);
+                let merged_formatted = format!(
+                    "{}\n\n---\n\n{}",
+                    existing.formatted_content, analysis.formatted_content
+                );
+                let merged_tags = if existing.tags.is_empty() {
+                    tags_str.clone()
+                } else {
+                    format!("{}, {}", existing.tags, tags_str)
+                };
 
-            return Ok(InputResult {
-                success: true,
-                message: format!("기존 메모 '{}'에 병합되었습니다", existing.title),
-                memo_id: Some(merge_id),
-                merged: true,
-                title: existing.title.clone(),
-                input_tokens: usage.input_tokens,
-                output_tokens: usage.output_tokens,
-                cost_usd: usage.cost_usd,
-            });
+                db::update_memo(
+                    merge_id,
+                    &merged_content,
+                    &merged_formatted,
+                    &analysis.summary,
+                    &merged_tags,
+                    None,
+                )
+                .map_err(|e| e.to_string())?;
+
+                merged_count += 1;
+                titles.push(format!("{}(병합)", existing.title));
+                continue;
+            }
         }
+
+        // 새 메모 저장
+        let new_memo = Memo {
+            id: 0,
+            title: analysis.title.clone(),
+            content: content.clone(),
+            formatted_content: analysis.formatted_content,
+            summary: analysis.summary,
+            category: analysis.category,
+            tags: tags_str,
+            embedding: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+
+        db::save_memo(&new_memo).map_err(|e| e.to_string())?;
+        saved_count += 1;
+        titles.push(analysis.title);
     }
 
-    // 새 메모 저장
-    let new_memo = Memo {
-        id: 0,
-        title: analysis.title.clone(),
-        content: content.clone(),
-        formatted_content: analysis.formatted_content,
-        summary: analysis.summary,
-        category: analysis.category,
-        tags: tags_str,
-        embedding: None,
-        created_at: String::new(),
-        updated_at: String::new(),
+    let message = if titles.len() == 1 {
+        format!("'{}' 저장됨", titles[0])
+    } else {
+        format!(
+            "{}개 저장, {}개 병합: {}",
+            saved_count,
+            merged_count,
+            titles.join(", ")
+        )
     };
-
-    let memo_id = db::save_memo(&new_memo).map_err(|e| e.to_string())?;
 
     Ok(InputResult {
         success: true,
-        message: format!("새 메모 '{}'가 저장되었습니다", analysis.title),
-        memo_id: Some(memo_id),
-        merged: false,
-        title: analysis.title,
+        message,
+        memo_id: None,
+        merged: merged_count > 0,
+        title: titles.join(", "),
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
         cost_usd: usage.cost_usd,
@@ -224,6 +235,18 @@ fn import_db(json_data: String) -> Result<i32, String> {
     Ok(count)
 }
 
+// 메모 업데이트 (편집용)
+#[tauri::command]
+fn update_memo(id: i64, title: String, formatted_content: String, category: String, tags: String) -> Result<(), String> {
+    db::update_memo_full(id, &title, &formatted_content, &category, &tags).map_err(|e| e.to_string())
+}
+
+// 메모 삭제
+#[tauri::command]
+fn delete_memo(id: i64) -> Result<(), String> {
+    db::delete_memo(id).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -241,7 +264,9 @@ pub fn run() {
             get_setting,
             get_usage,
             export_db,
-            import_db
+            import_db,
+            update_memo,
+            delete_memo
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
