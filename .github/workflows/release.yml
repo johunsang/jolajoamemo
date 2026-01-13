@@ -15,21 +15,7 @@ jobs:
   release:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin'
-            name: 'macOS-ARM64'
-          - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin'
-            name: 'macOS-Intel'
-          - platform: 'windows-latest'
-            args: ''
-            name: 'Windows'
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,8 +37,6 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install frontend dependencies
         run: npm install
@@ -136,11 +120,11 @@ jobs:
 
             ## 📥 Downloads
 
-            | Platform | File | Note |
-            |----------|------|------|
-            | **macOS (Apple Silicon)** | `JolaJoa Memo_x.x.x_aarch64.dmg` | M1, M2, M3 Mac |
-            | **macOS (Intel)** | `JolaJoa Memo_x.x.x_x64.dmg` | Intel Mac |
-            | **Windows** | `JolaJoa Memo_x.x.x_x64-setup.exe` | Windows 10/11 |
+            | Platform | File |
+            |----------|------|
+            | **Windows** | `JolaJoa Memo_x.x.x_x64-setup.exe` |
+
+            **macOS 사용자**: [GitHub 소스](https://github.com/johunsang/jolajoamemo)에서 직접 빌드하세요 (`cargo tauri build`)
 
             ---
 
@@ -156,4 +140,3 @@ jobs:
 
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
