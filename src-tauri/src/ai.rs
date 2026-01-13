@@ -3,7 +3,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-const DEFAULT_MODEL: &str = "gemini-2.0-flash-lite";
+const DEFAULT_MODEL: &str = "gemini-3-flash-preview";
 const EMBEDDING_MODEL: &str = "text-embedding-004";
 
 // 지원하는 모델 목록 (저렴한 순)

@@ -56,7 +56,7 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
     let (items, usage) = ai::analyze_multi_memo(&api_key, &model, &content, &memo_info).await?;
 
     // 사용량 기록
-    let model_name = if model.is_empty() { "gemini-2.0-flash-lite" } else { &model };
+    let model_name = if model.is_empty() { "gemini-3-flash-preview" } else { &model };
     db::log_api_usage(
         "analyze",
         model_name,
@@ -225,7 +225,7 @@ async fn search_memo(question: String) -> Result<SearchResult, String> {
     let (answer, usage) = ai::ask_question(&api_key, &model, &question, &context).await?;
 
     // 사용량 기록
-    let model_name = if model.is_empty() { "gemini-2.0-flash-lite" } else { &model };
+    let model_name = if model.is_empty() { "gemini-3-flash-preview" } else { &model };
     db::log_api_usage(
         "search",
         model_name,

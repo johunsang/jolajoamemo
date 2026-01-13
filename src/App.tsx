@@ -98,17 +98,17 @@ function App() {
   const [_opacity, setOpacity] = useState(100);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [aiModel, setAiModel] = useState("gemini-2.0-flash-lite");
+  const [aiModel, setAiModel] = useState("gemini-3-flash-preview");
 
-  // 사용 가능한 AI 모델 목록 (저렴한 순)
+  // 사용 가능한 AI 모델 목록
   const availableModels = [
-    { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite (기본/최저가)" },
-    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" },
-    { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
-    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (균형)" },
-    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (고성능)" },
-    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (속도+성능)" },
+    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (기본/추천)" },
     { id: "gemini-3-pro-preview", name: "Gemini 3 Pro (최강)" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (고성능)" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (균형)" },
+    { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
+    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" },
+    { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite (최저가)" },
   ];
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
