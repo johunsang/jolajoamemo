@@ -982,6 +982,7 @@ function App() {
                   {saving && <span className="status status-warning" style={{ fontSize: '10px' }}>SAVING...</span>}
                 </div>
                 <div className="flex gap-1">
+                  <button onClick={autoSave} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '10px' }}>{saving ? '...' : 'SAVE'}</button>
                   <button onClick={deleteMemo} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '10px' }}>DEL</button>
                   <button onClick={() => setSelectedMemo(null)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '10px' }}>X</button>
                 </div>
