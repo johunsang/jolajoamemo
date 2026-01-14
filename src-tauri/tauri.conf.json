@@ -37,7 +37,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcwNDVBMjQ2QUIzOTc5OEYKUldTUGVUbXJScUpGY0R5VDJRWWRCQi9GUk1WNEM3QXpRTjNJUGYxSDF4WGJRelFSdXgzVEhvUkIK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERGNTJDMTdGNjYzN0ExNjQKUldSa29UZG1mOEZTMzNBUXVaeER1YmxLRHM5OGxKb08wbE5lVUNxYXgzYTZRTHcvNHlRSko2VHQK",
       "endpoints": [
         "https://github.com/johunsang/jolajoamemo/releases/latest/download/latest.json"
       ]
