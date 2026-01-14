@@ -385,9 +385,13 @@ fn get_transactions() -> Result<Vec<Transaction>, String> {
     db::get_all_transactions().map_err(|e| e.to_string())
 }
 
-// 거래 삭제
+// 거래 삭제 (원본 메모도 함께 삭제)
 #[tauri::command]
 fn delete_transaction(id: i64) -> Result<(), String> {
+    // 먼저 연결된 메모 ID 조회
+    if let Ok(Some(memo_id)) = db::get_transaction_memo_id(id) {
+        db::delete_memo(memo_id).ok(); // 메모 삭제 (실패해도 계속)
+    }
     db::delete_transaction(id).map_err(|e| e.to_string())
 }
 

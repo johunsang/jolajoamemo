@@ -601,6 +601,19 @@ pub fn get_all_transactions() -> Result<Vec<Transaction>> {
     Ok(transactions)
 }
 
+// 거래의 memo_id 조회
+pub fn get_transaction_memo_id(id: i64) -> Result<Option<i64>> {
+    let conn = get_db().lock();
+    match conn.query_row(
+        "SELECT memo_id FROM transactions WHERE id = ?1",
+        params![id],
+        |row| row.get::<_, Option<i64>>(0),
+    ) {
+        Ok(memo_id) => Ok(memo_id),
+        Err(_) => Ok(None),
+    }
+}
+
 // 거래 삭제
 pub fn delete_transaction(id: i64) -> Result<()> {
     let conn = get_db().lock();
