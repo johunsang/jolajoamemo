@@ -974,7 +974,7 @@ function App() {
                   <div
                     onClick={() => setTab("schedule")}
                     className="card cursor-pointer transition-all hover:shadow-md"
-                    style={{ padding: '12px', borderLeft: '3px solid var(--accent)' }}
+                    style={{ padding: '12px' }}
                   >
                     <div className="flex justify-between items-center mb-2">
                       <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>📅 일정</span>
@@ -1002,7 +1002,7 @@ function App() {
                   <div
                     onClick={() => setTab("todo")}
                     className="card cursor-pointer transition-all hover:shadow-md"
-                    style={{ padding: '12px', borderLeft: '3px solid var(--success)' }}
+                    style={{ padding: '12px' }}
                   >
                     <div className="flex justify-between items-center mb-2">
                       <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>✓ 할일</span>
@@ -1026,7 +1026,7 @@ function App() {
                   <div
                     onClick={() => setTab("ledger")}
                     className="card cursor-pointer transition-all hover:shadow-md"
-                    style={{ padding: '12px', borderLeft: '3px solid var(--error)' }}
+                    style={{ padding: '12px' }}
                   >
                     <div className="flex justify-between items-center mb-2">
                       <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>💰 이번달</span>
@@ -1136,155 +1136,219 @@ function App() {
             </div>
           )}
 
-          {/* ===== SCHEDULE ===== */}
+          {/* ===== SCHEDULE (Linear Style) ===== */}
           {tab === "schedule" && !selectedMemo && (
-            <div className="space-y-2">
-              <div className="card" style={{ padding: '8px' }}>
-                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
-                  일정 ({schedules.length})
+            <div className="space-y-1">
+              {/* 섹션 헤더 */}
+              <div className="section-header">
+                일정 ({schedules.length})
+              </div>
+              {schedules.length === 0 ? (
+                <div className="empty-state">
+                  <p>아직 일정이 없습니다.</p>
+                  <p style={{ fontSize: '12px', marginTop: '4px' }}>메모에 날짜/시간이 포함되면 자동으로 추출됩니다.</p>
                 </div>
-                {schedules.length === 0 ? (
-                  <div className="p-4 text-center" style={{ border: '2px dashed var(--text-muted)' }}>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
-                      아직 일정이 없습니다.<br />
-                      메모에 날짜/시간이 포함되면 자동으로 추출됩니다.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {schedules.map((schedule) => (
+              ) : (
+                <div>
+                  {schedules.map((schedule) => {
+                    // 오늘/내일 체크
+                    const now = new Date();
+                    const today = now.toISOString().split('T')[0];
+                    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    const scheduleDate = schedule.start_time?.split('T')[0];
+                    const isToday = scheduleDate === today;
+                    const isTomorrow = scheduleDate === tomorrow;
+                    const isPast = scheduleDate && scheduleDate < today;
+
+                    return (
                       <div
                         key={schedule.id}
-                        className="flex items-start justify-between p-2"
+                        className="list-item"
                         style={{
-                          border: '1px solid var(--border)',
-                          background: 'var(--bg)',
-                          borderRadius: '4px'
+                          opacity: isPast ? 0.5 : 1,
+                          background: isToday ? 'var(--bg-selected)' : 'transparent'
                         }}
                       >
-                        <div className="flex-1">
-                          <div className="font-bold text-sm">{schedule.title}</div>
-                          {schedule.start_time && (
-                            <div className="text-xs mt-1" style={{ color: 'var(--accent)' }}>
-                              {formatScheduleDate(schedule.start_time)}
-                              {schedule.end_time && ` ~ ${formatScheduleDate(schedule.end_time)}`}
-                            </div>
-                          )}
-                          {schedule.location && (
-                            <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                              📍 {schedule.location}
-                            </div>
-                          )}
-                          {schedule.description && (
-                            <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                              {schedule.description}
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => deleteSchedule(schedule.id)}
-                          className="btn btn-danger ml-2"
-                          style={{ padding: '2px 6px', fontSize: '9px' }}
-                        >
-                          X
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ===== TODO ===== */}
-          {tab === "todo" && !selectedMemo && (
-            <div className="space-y-2">
-              <div className="card" style={{ padding: '8px' }}>
-                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
-                  할일 ({todos.filter(t => !t.completed).length}/{todos.length})
-                </div>
-                {todos.length === 0 ? (
-                  <div className="p-4 text-center" style={{ border: '2px dashed var(--text-muted)' }}>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
-                      아직 할일이 없습니다.<br />
-                      메모에 "~해야 한다" 같은 내용이 있으면 자동으로 추출됩니다.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {todos.map((todo) => (
-                      <div
-                        key={todo.id}
-                        className="flex items-center gap-2 p-2"
-                        style={{
-                          border: '1px solid var(--border)',
-                          background: todo.completed ? 'var(--bg-secondary)' : 'var(--bg)',
-                          opacity: todo.completed ? 0.6 : 1,
-                          borderRadius: '4px'
-                        }}
-                      >
-                        <button
-                          onClick={() => toggleTodo(todo.id)}
-                          className="w-5 h-5 flex items-center justify-center text-xs font-bold"
+                        {/* 날짜 아이콘 */}
+                        <div
+                          className="list-item-avatar"
                           style={{
-                            border: '2px solid var(--border)',
-                            background: todo.completed ? 'var(--success)' : 'transparent',
-                            color: todo.completed ? '#fff' : 'var(--text)',
-                            borderRadius: '3px'
+                            background: isToday ? 'var(--accent)' : isTomorrow ? 'var(--accent-light)' : 'var(--bg-secondary)',
+                            color: isToday ? 'var(--accent-text)' : 'var(--text-secondary)',
+                            width: '36px',
+                            height: '36px',
+                            fontSize: '10px',
+                            flexDirection: 'column',
+                            lineHeight: 1.2
                           }}
                         >
-                          {todo.completed ? '✓' : ''}
-                        </button>
-                        <div className="flex-1">
-                          <div
-                            className="text-sm"
-                            style={{ textDecoration: todo.completed ? 'line-through' : 'none' }}
-                          >
-                            {todo.title}
-                          </div>
-                          <div className="flex gap-2 mt-1">
-                            {todo.priority && (
-                              <span
-                                className="text-xs px-1"
-                                style={{
-                                  background: todo.priority === 'high' ? 'var(--error)' : todo.priority === 'medium' ? 'var(--text-muted)' : 'var(--bg-secondary)',
-                                  color: todo.priority === 'high' ? '#fff' : 'var(--text)',
-                                  borderRadius: '2px'
-                                }}
-                              >
-                                {todo.priority.toUpperCase()}
+                          <span style={{ fontWeight: 600 }}>{scheduleDate?.substring(8, 10) || '??'}</span>
+                          <span style={{ fontSize: '8px' }}>{scheduleDate?.substring(5, 7)}월</span>
+                        </div>
+
+                        {/* 내용 */}
+                        <div className="list-item-content">
+                          <div className="list-item-title">{schedule.title}</div>
+                          <div className="list-item-meta">
+                            {schedule.start_time && (
+                              <span style={{ color: isToday ? 'var(--accent-text)' : 'var(--text-muted)' }}>
+                                {isToday ? '오늘' : isTomorrow ? '내일' : ''} {schedule.start_time?.substring(11, 16)}
+                                {schedule.end_time && ` - ${schedule.end_time?.substring(11, 16)}`}
                               </span>
                             )}
-                            {todo.due_date && (
-                              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                📅 {todo.due_date}
-                              </span>
+                            {schedule.location && (
+                              <span>📍 {schedule.location}</span>
                             )}
                           </div>
                         </div>
+
+                        {/* 삭제 버튼 */}
                         <button
-                          onClick={() => deleteTodo(todo.id)}
-                          className="btn btn-danger"
-                          style={{ padding: '2px 6px', fontSize: '9px' }}
+                          onClick={(e) => { e.stopPropagation(); deleteSchedule(schedule.id); }}
+                          className="icon-btn"
+                          style={{ width: '24px', height: '24px', fontSize: '12px', color: 'var(--text-muted)' }}
                         >
-                          X
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== TODO (Linear Style) ===== */}
+          {tab === "todo" && !selectedMemo && (
+            <div className="space-y-1">
+              {/* 미완료 섹션 */}
+              <div className="section-header">
+                할일 ({todos.filter(t => !t.completed).length})
+              </div>
+              {todos.length === 0 ? (
+                <div className="empty-state">
+                  <p>아직 할일이 없습니다.</p>
+                  <p style={{ fontSize: '12px', marginTop: '4px' }}>메모에 "~해야 한다" 같은 내용이 있으면 자동으로 추출됩니다.</p>
+                </div>
+              ) : (
+                <>
+                  {/* 미완료 할일 */}
+                  <div>
+                    {todos.filter(t => !t.completed).map((todo) => (
+                      <div
+                        key={todo.id}
+                        className="list-item"
+                        style={{ background: todo.priority === 'high' ? 'rgba(239, 68, 68, 0.05)' : 'transparent' }}
+                      >
+                        {/* 체크박스 */}
+                        <button
+                          onClick={() => toggleTodo(todo.id)}
+                          className="flex-shrink-0"
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '4px',
+                            border: `2px solid ${todo.priority === 'high' ? 'var(--error)' : 'var(--border)'}`,
+                            background: 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            padding: 0
+                          }}
+                        />
+
+                        {/* 내용 */}
+                        <div className="list-item-content">
+                          <div className="list-item-title">{todo.title}</div>
+                          <div className="list-item-meta">
+                            {todo.priority && (
+                              <span className="priority">
+                                {todo.priority === 'high' ? '★★★' : todo.priority === 'medium' ? '★★' : '★'}
+                              </span>
+                            )}
+                            {todo.due_date && <span>{todo.due_date.substring(5)}</span>}
+                          </div>
+                        </div>
+
+                        {/* 삭제 버튼 */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteTodo(todo.id); }}
+                          className="icon-btn"
+                          style={{ width: '24px', height: '24px', fontSize: '12px', color: 'var(--text-muted)' }}
+                        >
+                          ✕
                         </button>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+
+                  {/* 완료된 할일 */}
+                  {todos.filter(t => t.completed).length > 0 && (
+                    <>
+                      <div className="section-header" style={{ marginTop: '16px' }}>
+                        완료 ({todos.filter(t => t.completed).length})
+                      </div>
+                      <div>
+                        {todos.filter(t => t.completed).map((todo) => (
+                          <div
+                            key={todo.id}
+                            className="list-item"
+                            style={{ opacity: 0.5 }}
+                          >
+                            {/* 체크박스 */}
+                            <button
+                              onClick={() => toggleTodo(todo.id)}
+                              className="flex-shrink-0"
+                              style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '4px',
+                                border: '2px solid var(--success)',
+                                background: 'var(--success)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                padding: 0,
+                                color: '#fff',
+                                fontSize: '10px'
+                              }}
+                            >
+                              ✓
+                            </button>
+
+                            {/* 내용 */}
+                            <div className="list-item-content">
+                              <div className="list-item-title" style={{ textDecoration: 'line-through' }}>{todo.title}</div>
+                            </div>
+
+                            {/* 삭제 버튼 */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deleteTodo(todo.id); }}
+                              className="icon-btn"
+                              style={{ width: '24px', height: '24px', fontSize: '12px', color: 'var(--text-muted)' }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )}
 
-          {/* ===== LEDGER (가계부) - 월별 보기 ===== */}
+          {/* ===== LEDGER (Linear Style) ===== */}
           {tab === "ledger" && !selectedMemo && (() => {
             // 월별로 그룹화
             const groupByMonth = (txList: Transaction[]) => {
               const groups: Record<string, Transaction[]> = {};
               txList.forEach(tx => {
                 const dateStr = tx.tx_date || tx.created_at;
-                const month = dateStr ? dateStr.substring(0, 7) : 'unknown'; // YYYY-MM
+                const month = dateStr ? dateStr.substring(0, 7) : 'unknown';
                 if (!groups[month]) groups[month] = [];
                 groups[month].push(tx);
               });
@@ -1292,182 +1356,192 @@ function App() {
             };
 
             const monthlyGroups = groupByMonth(transactions);
-            const sortedMonths = Object.keys(monthlyGroups).sort().reverse(); // 최신순
-
-            // 현재 월 기본 선택
+            const sortedMonths = Object.keys(monthlyGroups).sort().reverse();
             const now = new Date();
             const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
+            // 전체 요약
+            const totalIncome = transactions.filter(t => t.tx_type === 'income').reduce((s, t) => s + t.amount, 0);
+            const totalExpense = transactions.filter(t => t.tx_type === 'expense').reduce((s, t) => s + t.amount, 0);
+
             return (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {transactions.length === 0 ? (
-                  <div className="card" style={{ padding: '8px' }}>
-                    <div className="p-4 text-center" style={{ border: '2px dashed var(--text-muted)' }}>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
-                        아직 거래 내역이 없습니다.<br />
-                        메모에 금액이 포함되면 자동으로 추출됩니다.<br />
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                          예: "커피 5000원", "월급 300만원 입금"
-                        </span>
-                      </p>
-                    </div>
+                  <div className="empty-state">
+                    <p>아직 거래 내역이 없습니다.</p>
+                    <p style={{ fontSize: '12px', marginTop: '4px' }}>메모에 금액이 포함되면 자동으로 추출됩니다.</p>
+                    <p style={{ fontSize: '11px', marginTop: '4px', color: 'var(--text-muted)' }}>예: "커피 5000원", "월급 300만원 입금"</p>
                   </div>
                 ) : (
-                  sortedMonths.map(month => {
-                    const monthTxs = monthlyGroups[month];
-                    const income = monthTxs.filter(t => t.tx_type === 'income').reduce((sum, t) => sum + t.amount, 0);
-                    const expense = monthTxs.filter(t => t.tx_type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-                    const balance = income - expense;
-
-                    // 월 표시 포맷 (2026-01 → 2026년 1월)
-                    const [year, mon] = month.split('-');
-                    const monthLabel = month === 'unknown' ? '날짜 미상' : `${year}년 ${parseInt(mon)}월`;
-                    const isCurrentMonth = month === currentMonth;
-
-                    return (
-                      <div key={month} className="card" style={{ padding: '8px' }}>
-                        {/* 월 헤더 + 요약 */}
-                        <div className="card-header flex justify-between items-center" style={{ fontSize: '11px', marginBottom: '6px', paddingBottom: '6px' }}>
-                          <span style={{ fontWeight: 600 }}>
-                            {monthLabel} {isCurrentMonth && <span style={{ color: 'var(--accent)', fontSize: '10px' }}>(이번달)</span>}
-                          </span>
-                          <span style={{ fontSize: '10px' }}>{monthTxs.length}건</span>
-                        </div>
-
-                        {/* 월별 요약 */}
-                        <div className="flex gap-2 mb-3">
-                          <div className="flex-1 p-2" style={{ background: 'var(--bg-secondary)', borderRadius: '3px' }}>
-                            <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>수입</div>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success)' }}>
-                              +{income.toLocaleString()}원
-                            </div>
-                          </div>
-                          <div className="flex-1 p-2" style={{ background: 'var(--bg-secondary)', borderRadius: '3px' }}>
-                            <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>지출</div>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--error)' }}>
-                              -{expense.toLocaleString()}원
-                            </div>
-                          </div>
-                          <div className="flex-1 p-2" style={{ background: 'var(--bg-secondary)', borderRadius: '3px' }}>
-                            <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>잔액</div>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: balance >= 0 ? 'var(--success)' : 'var(--error)' }}>
-                              {balance >= 0 ? '+' : ''}{balance.toLocaleString()}원
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 거래 목록 */}
-                        <div className="space-y-1">
-                          {monthTxs.map((tx) => (
-                            <div
-                              key={tx.id}
-                              className="flex items-center justify-between p-2"
-                              style={{
-                                border: '1px solid var(--border)',
-                                background: editingTx?.id === tx.id ? 'var(--bg-secondary)' : 'var(--bg)',
-                                borderRadius: '3px'
-                              }}
-                            >
-                              {editingTx?.id === tx.id ? (
-                                // 수정 모드
-                                <div className="flex-1 space-y-2">
-                                  <div className="flex gap-2">
-                                    <select
-                                      value={editTxType}
-                                      onChange={(e) => setEditTxType(e.target.value)}
-                                      className="input"
-                                      style={{ padding: '4px', fontSize: '11px', width: '70px' }}
-                                    >
-                                      <option value="income">수입</option>
-                                      <option value="expense">지출</option>
-                                    </select>
-                                    <input
-                                      type="number"
-                                      value={editTxAmount}
-                                      onChange={(e) => setEditTxAmount(e.target.value)}
-                                      className="input"
-                                      placeholder="금액"
-                                      style={{ padding: '4px', fontSize: '11px', width: '100px' }}
-                                    />
-                                  </div>
-                                  <input
-                                    type="text"
-                                    value={editTxDesc}
-                                    onChange={(e) => setEditTxDesc(e.target.value)}
-                                    className="input w-full"
-                                    placeholder="설명"
-                                    style={{ padding: '4px', fontSize: '11px' }}
-                                  />
-                                  <div className="flex gap-2">
-                                    <input
-                                      type="text"
-                                      value={editTxCategory}
-                                      onChange={(e) => setEditTxCategory(e.target.value)}
-                                      className="input flex-1"
-                                      placeholder="카테고리"
-                                      style={{ padding: '4px', fontSize: '11px' }}
-                                    />
-                                    <input
-                                      type="date"
-                                      value={editTxDate}
-                                      onChange={(e) => setEditTxDate(e.target.value)}
-                                      className="input"
-                                      style={{ padding: '4px', fontSize: '11px' }}
-                                    />
-                                  </div>
-                                  <div className="flex gap-1">
-                                    <button onClick={saveEditTx} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '10px' }}>저장</button>
-                                    <button onClick={() => setEditingTx(null)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '10px' }}>취소</button>
-                                  </div>
-                                </div>
-                              ) : (
-                                // 일반 모드
-                                <>
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2">
-                                      <span
-                                        style={{
-                                          fontSize: '9px',
-                                          padding: '1px 4px',
-                                          background: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)',
-                                          color: '#fff',
-                                          borderRadius: '2px'
-                                        }}
-                                      >
-                                        {tx.tx_type === 'income' ? '수입' : '지출'}
-                                      </span>
-                                      <span style={{ fontSize: '12px' }}>{tx.description}</span>
-                                    </div>
-                                    <div className="flex gap-2 mt-1">
-                                      {tx.category && (
-                                        <span className="tag" style={{ fontSize: '9px' }}>{tx.category}</span>
-                                      )}
-                                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                        {tx.tx_date ? tx.tx_date.substring(5) : tx.created_at.substring(5, 10)}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div
-                                      style={{
-                                        fontSize: '13px',
-                                        fontWeight: 600,
-                                        color: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)'
-                                      }}
-                                    >
-                                      {tx.tx_type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()}원
-                                    </div>
-                                    <button onClick={() => startEditTx(tx)} className="btn" style={{ padding: '2px 6px', fontSize: '10px' }}>✎</button>
-                                    <button onClick={() => deleteTx(tx.id)} className="btn btn-danger" style={{ padding: '2px 6px', fontSize: '10px' }}>✕</button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          ))}
+                  <>
+                    {/* 전체 요약 헤더 */}
+                    <div style={{
+                      display: 'flex',
+                      gap: '16px',
+                      padding: '12px 16px',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: 'var(--radius-lg)',
+                      marginBottom: '8px'
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>총 수입</div>
+                        <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--success)' }}>+{totalIncome.toLocaleString()}</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>총 지출</div>
+                        <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--error)' }}>-{totalExpense.toLocaleString()}</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>잔액</div>
+                        <div style={{ fontSize: '16px', fontWeight: 600, color: totalIncome - totalExpense >= 0 ? 'var(--success)' : 'var(--error)' }}>
+                          {(totalIncome - totalExpense).toLocaleString()}원
                         </div>
                       </div>
-                    );
-                  })
+                    </div>
+
+                    {/* 월별 섹션 */}
+                    {sortedMonths.map(month => {
+                      const monthTxs = monthlyGroups[month];
+                      const income = monthTxs.filter(t => t.tx_type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                      const expense = monthTxs.filter(t => t.tx_type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+
+                      const [year, mon] = month.split('-');
+                      const monthLabel = month === 'unknown' ? '날짜 미상' : `${parseInt(mon)}월`;
+                      const isCurrentMonth = month === currentMonth;
+
+                      return (
+                        <div key={month}>
+                          {/* 월 섹션 헤더 */}
+                          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                              {monthLabel} {isCurrentMonth && <span style={{ color: 'var(--accent)', fontWeight: 500 }}>이번달</span>}
+                              <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>{monthTxs.length}건</span>
+                            </span>
+                            <span style={{ fontSize: '11px' }}>
+                              <span style={{ color: 'var(--success)' }}>+{income.toLocaleString()}</span>
+                              <span style={{ margin: '0 4px' }}>/</span>
+                              <span style={{ color: 'var(--error)' }}>-{expense.toLocaleString()}</span>
+                            </span>
+                          </div>
+
+                          {/* 거래 목록 */}
+                          <div>
+                            {monthTxs.map((tx) => (
+                              <div
+                                key={tx.id}
+                                className="list-item"
+                                style={{ background: editingTx?.id === tx.id ? 'var(--bg-secondary)' : 'transparent' }}
+                              >
+                                {editingTx?.id === tx.id ? (
+                                  // 수정 모드
+                                  <div className="flex-1 space-y-2" style={{ padding: '8px 0' }}>
+                                    <div className="flex gap-2">
+                                      <select
+                                        value={editTxType}
+                                        onChange={(e) => setEditTxType(e.target.value)}
+                                        className="input"
+                                        style={{ padding: '6px 8px', fontSize: '12px', width: '80px' }}
+                                      >
+                                        <option value="income">수입</option>
+                                        <option value="expense">지출</option>
+                                      </select>
+                                      <input
+                                        type="number"
+                                        value={editTxAmount}
+                                        onChange={(e) => setEditTxAmount(e.target.value)}
+                                        className="input flex-1"
+                                        placeholder="금액"
+                                        style={{ padding: '6px 8px', fontSize: '12px' }}
+                                      />
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={editTxDesc}
+                                      onChange={(e) => setEditTxDesc(e.target.value)}
+                                      className="input w-full"
+                                      placeholder="설명"
+                                      style={{ padding: '6px 8px', fontSize: '12px' }}
+                                    />
+                                    <div className="flex gap-2">
+                                      <input
+                                        type="text"
+                                        value={editTxCategory}
+                                        onChange={(e) => setEditTxCategory(e.target.value)}
+                                        className="input flex-1"
+                                        placeholder="카테고리"
+                                        style={{ padding: '6px 8px', fontSize: '12px' }}
+                                      />
+                                      <input
+                                        type="date"
+                                        value={editTxDate}
+                                        onChange={(e) => setEditTxDate(e.target.value)}
+                                        className="input"
+                                        style={{ padding: '6px 8px', fontSize: '12px' }}
+                                      />
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button onClick={saveEditTx} className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '12px' }}>저장</button>
+                                      <button onClick={() => setEditingTx(null)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }}>취소</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  // 일반 모드
+                                  <>
+                                    {/* 아이콘 */}
+                                    <div
+                                      className="list-item-avatar"
+                                      style={{
+                                        background: tx.tx_type === 'income' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                        color: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)',
+                                        fontSize: '14px'
+                                      }}
+                                    >
+                                      {tx.tx_type === 'income' ? '↓' : '↑'}
+                                    </div>
+
+                                    {/* 내용 */}
+                                    <div className="list-item-content">
+                                      <div className="list-item-title">{tx.description}</div>
+                                      <div className="list-item-meta">
+                                        {tx.category && <span className="tag">{tx.category}</span>}
+                                        <span>{tx.tx_date?.substring(5) || tx.created_at.substring(5, 10)}</span>
+                                      </div>
+                                    </div>
+
+                                    {/* 금액 */}
+                                    <div style={{
+                                      fontSize: '14px',
+                                      fontWeight: 600,
+                                      color: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)',
+                                      marginRight: '8px'
+                                    }}>
+                                      {tx.tx_type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()}
+                                    </div>
+
+                                    {/* 액션 버튼 */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); startEditTx(tx); }}
+                                      className="icon-btn"
+                                      style={{ width: '24px', height: '24px', fontSize: '12px', color: 'var(--text-muted)' }}
+                                    >
+                                      ✎
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); deleteTx(tx.id); }}
+                                      className="icon-btn"
+                                      style={{ width: '24px', height: '24px', fontSize: '12px', color: 'var(--text-muted)' }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
               </div>
             );
