@@ -15,7 +15,18 @@ jobs:
   release:
     permissions:
       contents: write
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +48,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install frontend dependencies
         run: npm install
@@ -98,33 +111,13 @@ jobs:
 
             ---
 
-            ## 🇯🇵 日本語
-
-            **AIが自動整理するスマートメモ帳**
-
-            メモを入力するだけで、AIが自動的にタイトル、カテゴリ、タグを生成します。
-            自然言語で質問すると、AIがメモを検索して回答します。
-
-            ### 主な機能
-            - ✨ **AI自動整理** - Gemini AIがメモを分析して自動分類
-            - 🔍 **自然言語検索** - 「先週の会議で何を話した？」のように質問
-            - 💾 **リアルタイム自動保存** - 編集中に自動保存
-            - 🗂️ **ドラッグ＆ドロップ** - メモをドラッグしてカテゴリ移動
-            - 🌙 **ダークモード** - 目に優しいダークテーマ
-            - 🌍 **多言語対応** - 韓国語、英語、日本語、中国語、フランス語
-
-            ### 必要条件
-            - [Gemini API Key](https://aistudio.google.com/apikey) (無料)
-
-            ---
-
             ## 📥 Downloads
 
             | Platform | File |
             |----------|------|
-            | **Windows** | `JolaJoa Memo_x.x.x_x64-setup.exe` |
-
-            **macOS 사용자**: [GitHub 소스](https://github.com/johunsang/jolajoamemo)에서 직접 빌드하세요 (`cargo tauri build`)
+            | **Windows** | `JolaJoa.Memo_x.x.x_x64-setup.exe` |
+            | **macOS (Apple Silicon)** | `JolaJoa.Memo_x.x.x_aarch64.dmg` |
+            | **macOS (Intel)** | `JolaJoa.Memo_x.x.x_x64.dmg` |
 
             ---
 
@@ -134,9 +127,10 @@ jobs:
             |-------|-------|--------|
             | Gemini 2.0 Flash | $0.10 / 1M tokens | $0.40 / 1M tokens |
 
-            **예시 / Example / 例:**
+            **예시 / Example:**
             - 메모 저장 1회: ~$0.0005 (약 0.5원)
             - 하루 100회 사용: ~$0.15 (약 200원)
 
           releaseDraft: true
           prerelease: false
+          args: ${{ matrix.args }}
