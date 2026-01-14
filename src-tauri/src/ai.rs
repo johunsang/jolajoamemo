@@ -788,3 +788,157 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
     dot / (norm_a * norm_b)
 }
+
+// ===== 폴더 정리 AI 기능 =====
+
+#[derive(Debug, Deserialize)]
+struct OrganizeResponse {
+    files: Vec<OrganizePlanResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OrganizePlanResponse {
+    file_name: String,
+    suggested_folder: String,
+    reason: String,
+}
+
+/// AI로 파일 정리 분석
+/// files: (파일명, 확장자, 크기, 수정일, 경로) 튜플 목록
+/// 참고: 파일 정리는 복잡한 분석이 필요하므로 항상 Gemini 3 모델 사용
+pub async fn analyze_files_for_organization(
+    api_key: &str,
+    _model: &str,  // 무시됨 - 항상 Gemini 3 사용
+    files: &[(String, String, u64, String, String)], // (name, extension, size, modified, path)
+) -> Result<Vec<(String, String, String, String)>, String> { // (file_path, file_name, suggested_folder, reason)
+    // 파일 정리는 항상 Gemini 3 Flash 사용 (더 정확한 분류를 위해)
+    let model = "gemini-3-flash-preview";
+    let client = Client::new();
+
+    // 파일이 너무 많으면 배치로 나눠서 처리 (최대 30개씩)
+    const BATCH_SIZE: usize = 30;
+    let mut all_results: Vec<(String, String, String, String)> = Vec::new();
+
+    for chunk in files.chunks(BATCH_SIZE) {
+        let batch_results = analyze_files_batch(api_key, model, chunk, &client).await?;
+        all_results.extend(batch_results);
+    }
+
+    Ok(all_results)
+}
+
+/// 파일 배치 분석 (내부 함수)
+async fn analyze_files_batch(
+    api_key: &str,
+    model: &str,
+    files: &[(String, String, u64, String, String)],
+    client: &Client,
+) -> Result<Vec<(String, String, String, String)>, String> {
+    // 파일 목록을 텍스트로 변환
+    let file_list: Vec<String> = files
+        .iter()
+        .map(|(name, ext, size, _modified, _path)| {
+            format!(
+                "- {} (확장자: {}, 크기: {}KB)",
+                name,
+                if ext.is_empty() { "없음" } else { ext },
+                size / 1024
+            )
+        })
+        .collect();
+
+    let file_names: Vec<String> = files.iter().map(|(name, _, _, _, _)| name.clone()).collect();
+
+    let prompt = format!(
+        r#"당신은 파일 정리 전문가입니다. 사용자의 폴더에 있는 파일들을 분석하고 적절한 하위 폴더로 정리하는 방안을 제안하세요.
+
+## 파일 목록:
+{}
+
+## 정리 규칙:
+1. **파일 유형별 분류**:
+   - 이미지 (jpg, png, gif, webp, svg, ico, bmp) → "이미지" 또는 "사진"
+   - 문서 (pdf, doc, docx, txt, hwp, xlsx, pptx) → "문서"
+   - 영상 (mp4, mov, avi, mkv, wmv) → "영상"
+   - 음악 (mp3, wav, flac, m4a, ogg) → "음악"
+   - 압축파일 (zip, rar, 7z, tar, gz) → "압축파일"
+   - 코드 (js, ts, py, java, html, css, json, rs) → "코드"
+   - 실행파일 (exe, dmg, app, msi) → "설치파일"
+
+2. **파일명 기반 분류** (더 우선):
+   - 날짜가 포함된 사진 (IMG_20240101, Screenshot 2024) → "사진/2024" 등 연도별
+   - "계약서", "이력서", "보고서" 등 키워드 → "문서/업무"
+   - "영수증", "청구서" → "문서/재무"
+   - 게임 관련 → "게임"
+   - 스크린샷 → "스크린샷"
+
+3. **정리 원칙**:
+   - 하위 폴더는 1~2단계까지만 (예: "사진/2024", "문서/업무")
+   - 폴더명은 한국어로, 직관적이고 짧게
+   - 분류가 애매하면 "기타"로
+
+## 응답 형식 (JSON만 출력):
+{{
+  "files": [
+    {{
+      "file_name": "정확한 파일명.확장자",
+      "suggested_folder": "제안할 폴더명",
+      "reason": "왜 이 폴더인지 간단한 이유"
+    }}
+  ]
+}}
+
+모든 파일에 대해 분석 결과를 제공하세요. 파일명은 정확히 일치해야 합니다.
+분석 대상 파일명 목록: {:?}"#,
+        file_list.join("\n"),
+        file_names
+    );
+
+    let response = client
+        .post(format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, api_key
+        ))
+        .json(&json!({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.3,
+                "responseMimeType": "application/json"
+            }
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("API 요청 실패: {}", e))?;
+
+    let gemini_resp: GeminiResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("응답 파싱 실패: {}", e))?;
+
+    let text = gemini_resp
+        .candidates
+        .first()
+        .and_then(|c| c.content.parts.first())
+        .map(|p| p.text.clone())
+        .ok_or("응답 없음")?;
+
+    let organize_resp: OrganizeResponse = serde_json::from_str(&text)
+        .map_err(|e| format!("JSON 파싱 실패: {} - 원본: {}", e, text))?;
+
+    // 파일 경로와 매핑하여 결과 반환
+    let mut results: Vec<(String, String, String, String)> = Vec::new();
+
+    for resp_plan in organize_resp.files {
+        // 원본 파일 정보 찾기
+        if let Some((name, _ext, _size, _modified, path)) = files.iter().find(|(name, _, _, _, _)| *name == resp_plan.file_name) {
+            results.push((
+                path.clone(),
+                name.clone(),
+                resp_plan.suggested_folder,
+                resp_plan.reason,
+            ));
+        }
+    }
+
+    Ok(results)
+}

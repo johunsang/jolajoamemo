@@ -68,7 +68,24 @@ interface SearchResult {
   cost_usd: number;
 }
 
-type Tab = "input" | "search" | "schedule" | "todo" | "ledger" | "settings";
+type Tab = "input" | "search" | "schedule" | "todo" | "ledger" | "organize" | "settings";
+
+interface FileInfo {
+  name: string;
+  path: string;
+  size: number;
+  extension: string;
+  modified: string;
+  is_dir: boolean;
+}
+
+interface OrganizePlan {
+  file_path: string;
+  file_name: string;
+  suggested_folder: string;
+  reason: string;
+  selected: boolean;
+}
 
 interface Transaction {
   id: number;
@@ -156,6 +173,24 @@ function App() {
   const [aiModel, setAiModel] = useState("gemini-3-flash-preview");
   const [appVersion, setAppVersion] = useState("");
   const [toast, setToast] = useState<string | null>(null); // 토스트 알림
+
+  // 폴더 정리 관련 상태
+  const [organizeBasePath, setOrganizeBasePath] = useState<string>(""); // 선택된 폴더 경로
+  const [organizeFiles, setOrganizeFiles] = useState<FileInfo[]>([]); // 스캔된 파일 목록
+  const [organizePlans, setOrganizePlans] = useState<OrganizePlan[]>([]); // AI 분석 결과
+  const [organizeLoading, setOrganizeLoading] = useState(false); // 분석 중
+  const [organizeExecuting, setOrganizeExecuting] = useState(false); // 실행 중
+  const [organizeResult, setOrganizeResult] = useState<string | null>(null); // 결과 메시지
+  const [organizeStep, setOrganizeStep] = useState<string>(""); // 현재 진행 단계
+  const [organizeProgress, setOrganizeProgress] = useState<number>(0); // 진행률 0-100
+  const [organizeMovedFiles, setOrganizeMovedFiles] = useState<Array<{
+    file_name: string;
+    from_path: string;
+    to_path: string;
+    to_folder: string;
+  }>>([]); // 이동된 파일 상세 정보
+  const [organizePhase, setOrganizePhase] = useState<'select-folder' | 'select-method' | 'preview' | 'done'>('select-folder'); // 현재 단계
+  const [organizeMethod, setOrganizeMethod] = useState<string>(""); // 선택된 정리 방식
 
   // 무한 스크롤 관련 상태
   const [memoOffset, setMemoOffset] = useState(0);
@@ -1411,12 +1446,13 @@ function App() {
             ))}
           </div>
 
-          {/* 그룹 2: 일정, 할일, 가계부 */}
+          {/* 그룹 2: 일정, 할일, 가계부, 폴더정리 */}
           <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', marginRight: '12px', border: '1px solid var(--border-light)' }}>
             {[
               { id: "schedule" as Tab, label: schedules.length > 0 ? `일정 (${schedules.length})` : '일정' },
               { id: "todo" as Tab, label: todos.filter(t => !t.completed).length > 0 ? `할일 (${todos.filter(t => !t.completed).length})` : '할일' },
               { id: "ledger" as Tab, label: transactions.length > 0 ? `가계부 (${transactions.length})` : '가계부' },
+              { id: "organize" as Tab, label: '폴더 정리' },
             ].map((item) => (
               <button
                 key={item.id}
@@ -2424,6 +2460,444 @@ function App() {
               </div>
             );
           })()}
+
+          {/* ===== ORGANIZE (폴더 정리) ===== */}
+          {tab === "organize" && !selectedMemo && (
+            <div className="space-y-4">
+              {/* 단계 표시 */}
+              <div className="card" style={{ padding: '12px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  {['폴더 선택', '정리 방식', '미리보기', '완료'].map((step, idx) => {
+                    const phases = ['select-folder', 'select-method', 'preview', 'done'];
+                    const currentIdx = phases.indexOf(organizePhase);
+                    const isActive = idx === currentIdx;
+                    const isDone = idx < currentIdx;
+                    return (
+                      <React.Fragment key={step}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          color: isActive ? 'var(--accent)' : isDone ? 'var(--success)' : 'var(--text-secondary)',
+                          fontWeight: isActive ? 600 : 400,
+                          fontSize: '12px'
+                        }}>
+                          <span style={{
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: isActive ? 'var(--accent)' : isDone ? 'var(--success)' : 'var(--bg-secondary)',
+                            color: isActive || isDone ? 'white' : 'var(--text-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '11px',
+                            fontWeight: 600
+                          }}>
+                            {isDone ? '✓' : idx + 1}
+                          </span>
+                          {step}
+                        </div>
+                        {idx < 3 && <span style={{ color: 'var(--border-light)' }}>→</span>}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+                {organizeBasePath && (
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    📂 {organizeBasePath}
+                  </div>
+                )}
+              </div>
+
+              {/* STEP 1: 폴더 선택 */}
+              {organizePhase === 'select-folder' && (
+                <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>📁</div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px' }}>정리할 폴더를 선택하세요</h3>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+                    AI가 폴더 안의 파일들을 분석하고 정리 방안을 제안해드려요
+                  </p>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const selected = await open({
+                          directory: true,
+                          multiple: false,
+                          title: "정리할 폴더 선택"
+                        });
+                        if (selected && typeof selected === 'string') {
+                          setOrganizeBasePath(selected);
+                          setOrganizeLoading(true);
+                          setOrganizeStep("📂 폴더 스캔 중...");
+
+                          const files = await invoke<FileInfo[]>("scan_folder", { path: selected });
+                          setOrganizeFiles(files);
+                          setOrganizeLoading(false);
+                          setOrganizePhase('select-method');
+                        }
+                      } catch (e) {
+                        console.error(e);
+                        setOrganizeLoading(false);
+                        setOrganizeResult(`오류: ${e}`);
+                      }
+                    }}
+                    disabled={organizeLoading}
+                    className="btn"
+                    style={{
+                      background: 'var(--accent)',
+                      color: 'white',
+                      padding: '12px 32px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    {organizeLoading ? '🔄 스캔 중...' : '📂 폴더 선택하기'}
+                  </button>
+                </div>
+              )}
+
+              {/* STEP 2: 정리 방식 선택 */}
+              {organizePhase === 'select-method' && (
+                <div className="card" style={{ padding: '20px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px', textAlign: 'center' }}>
+                    어떻게 정리할까요?
+                  </h3>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px', textAlign: 'center' }}>
+                    {organizeFiles.filter(f => !f.is_dir).length}개 파일을 발견했어요. 정리 방식을 선택해주세요.
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {[
+                      { id: 'type', icon: '📦', title: '종류별', desc: '이미지, 문서, 영상, 음악 등 파일 유형으로 분류' },
+                      { id: 'date', icon: '📅', title: '날짜별', desc: '2024년, 2023년 등 파일 수정 날짜로 분류' },
+                      { id: 'topic', icon: '🏷️', title: '주제별', desc: '파일명의 키워드를 분석해서 주제로 분류' },
+                      { id: 'smart', icon: '🤖', title: 'AI 추천', desc: 'AI가 가장 적합한 방식으로 자동 분류' },
+                    ].map((method) => (
+                      <button
+                        key={method.id}
+                        onClick={() => setOrganizeMethod(method.id)}
+                        className="card"
+                        style={{
+                          padding: '16px',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          border: organizeMethod === method.id ? '2px solid var(--accent)' : '1px solid var(--border-light)',
+                          background: organizeMethod === method.id ? 'var(--bg-active)' : 'var(--bg)',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>{method.icon}</div>
+                        <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>{method.title}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{method.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+                    <button
+                      onClick={() => {
+                        setOrganizePhase('select-folder');
+                        setOrganizeBasePath('');
+                        setOrganizeFiles([]);
+                      }}
+                      className="btn"
+                      style={{ flex: 1, padding: '10px' }}
+                    >
+                      ← 이전
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!organizeMethod) {
+                          setToast('정리 방식을 선택해주세요');
+                          return;
+                        }
+                        setOrganizeLoading(true);
+                        setOrganizeProgress(0);
+                        setOrganizeStep("🤖 AI가 분석 중...");
+                        setOrganizePhase('preview');
+
+                        try {
+                          // AI 분석 (선택한 방식 전달 - 추후 백엔드에서 처리)
+                          const files = organizeFiles;
+                          const plans = await invoke<OrganizePlan[]>("analyze_files_for_organization", {
+                            files,
+                            // method: organizeMethod  // TODO: 백엔드에 전달
+                          });
+                          setOrganizePlans(plans);
+                          setOrganizeLoading(false);
+                        } catch (e) {
+                          console.error(e);
+                          setOrganizeLoading(false);
+                          setOrganizeResult(`오류: ${e}`);
+                          setOrganizePhase('select-method');
+                        }
+                      }}
+                      disabled={!organizeMethod || organizeLoading}
+                      className="btn"
+                      style={{
+                        flex: 2,
+                        padding: '10px',
+                        background: organizeMethod ? 'var(--accent)' : 'var(--bg-secondary)',
+                        color: organizeMethod ? 'white' : 'var(--text-secondary)'
+                      }}
+                    >
+                      {organizeLoading ? '🔄 분석 중...' : '다음 →'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: 미리보기 및 수정 */}
+              {organizePhase === 'preview' && !organizeLoading && (
+                <div className="card" style={{ padding: '16px' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 style={{ fontSize: '14px', fontWeight: 600 }}>🗂️ 정리 계획 미리보기</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setOrganizePlans(prev => prev.map(p => ({ ...p, selected: true })))}
+                        className="btn"
+                        style={{ padding: '4px 8px', fontSize: '11px' }}
+                      >
+                        전체 선택
+                      </button>
+                      <button
+                        onClick={() => setOrganizePlans(prev => prev.map(p => ({ ...p, selected: false })))}
+                        className="btn"
+                        style={{ padding: '4px 8px', fontSize: '11px' }}
+                      >
+                        전체 해제
+                      </button>
+                    </div>
+                  </div>
+
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                    원하지 않는 항목은 체크 해제하세요. 선택된 파일만 이동됩니다.
+                  </p>
+
+                  <div style={{ maxHeight: '350px', overflowY: 'auto', marginBottom: '16px' }}>
+                    {organizePlans.map((plan, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setOrganizePlans(prev => prev.map((p, i) =>
+                            i === idx ? { ...p, selected: !p.selected } : p
+                          ));
+                        }}
+                        className="cursor-pointer"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '10px 12px',
+                          borderBottom: '1px solid var(--border-light)',
+                          background: plan.selected ? 'var(--bg-active)' : 'transparent',
+                          transition: 'background 0.15s ease'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={plan.selected}
+                          onChange={() => {}}
+                          style={{ marginRight: '12px', width: '16px', height: '16px' }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>
+                            {plan.file_name}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            → <span style={{ color: 'var(--accent)', fontWeight: 500 }}>{plan.suggested_folder}/</span>
+                            <span style={{ marginLeft: '8px', opacity: 0.7 }}>{plan.reason}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      onClick={() => {
+                        setOrganizePhase('select-method');
+                        setOrganizePlans([]);
+                      }}
+                      className="btn"
+                      style={{ flex: 1, padding: '10px' }}
+                    >
+                      ← 다시 선택
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const selectedCount = organizePlans.filter(p => p.selected).length;
+                        if (selectedCount === 0) {
+                          setToast('선택된 파일이 없습니다');
+                          return;
+                        }
+                        setOrganizeExecuting(true);
+                        try {
+                          const result = await invoke<{
+                            success: boolean;
+                            moved_count: number;
+                            failed_count: number;
+                            message: string;
+                            moved_files: Array<{
+                              file_name: string;
+                              from_path: string;
+                              to_path: string;
+                              to_folder: string;
+                            }>;
+                          }>(
+                            "execute_organization",
+                            { basePath: organizeBasePath, plans: organizePlans.filter(p => p.selected) }
+                          );
+                          setOrganizeResult(result.message);
+                          setOrganizeMovedFiles(result.moved_files);
+                          setOrganizePlans([]);
+                          setOrganizePhase('done');
+                          if (result.success) {
+                            setToast(`✅ ${result.moved_count}개 파일 정리 완료!`);
+                          }
+                        } catch (e) {
+                          setOrganizeResult(`오류: ${e}`);
+                        }
+                        setOrganizeExecuting(false);
+                      }}
+                      disabled={organizeExecuting || organizePlans.filter(p => p.selected).length === 0}
+                      className="btn"
+                      style={{
+                        flex: 2,
+                        padding: '10px',
+                        background: 'var(--success)',
+                        color: 'white'
+                      }}
+                    >
+                      {organizeExecuting ? '🔄 정리 중...' : `✅ ${organizePlans.filter(p => p.selected).length}개 파일 정리하기`}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 분석 중 로딩 */}
+              {organizePhase === 'preview' && organizeLoading && (
+                <div className="card" style={{ padding: '24px', textAlign: 'center' }}>
+                  <div style={{
+                    width: '60px',
+                    height: '60px',
+                    margin: '0 auto 20px',
+                    borderRadius: '50%',
+                    border: '3px solid var(--border-light)',
+                    borderTopColor: 'var(--accent)',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '8px' }}>
+                    {organizeStep || 'AI가 분석 중...'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    파일을 분석하고 최적의 정리 방안을 찾고 있어요
+                  </div>
+                  <style>{`
+                    @keyframes spin {
+                      from { transform: rotate(0deg); }
+                      to { transform: rotate(360deg); }
+                    }
+                  `}</style>
+                </div>
+              )}
+
+              {/* STEP 4: 완료 - 결과 상세 보기 */}
+              {organizePhase === 'done' && (
+                <div className="card" style={{ padding: '20px' }}>
+                  <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
+                    <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '4px' }}>정리 완료!</h3>
+                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      {organizeMovedFiles.length}개 파일이 정리되었어요
+                    </p>
+                  </div>
+
+                  {/* 이동된 파일 목록 - 폴더별로 그룹화 */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h4 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>📋 정리 내역</h4>
+                    <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                      {Object.entries(
+                        organizeMovedFiles.reduce((acc, file) => {
+                          if (!acc[file.to_folder]) acc[file.to_folder] = [];
+                          acc[file.to_folder].push(file);
+                          return acc;
+                        }, {} as Record<string, typeof organizeMovedFiles>)
+                      ).map(([folder, files]) => (
+                        <div key={folder} style={{ marginBottom: '12px' }}>
+                          <div style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: 'var(--accent)',
+                            marginBottom: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}>
+                            📁 {folder}/ <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>({files.length}개)</span>
+                          </div>
+                          {files.map((file, idx) => (
+                            <div
+                              key={idx}
+                              style={{
+                                fontSize: '11px',
+                                padding: '4px 0 4px 20px',
+                                color: 'var(--text-secondary)',
+                                borderLeft: '2px solid var(--border-light)',
+                                marginLeft: '6px'
+                              }}
+                            >
+                              {file.file_name}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setOrganizePhase('select-folder');
+                      setOrganizeBasePath('');
+                      setOrganizeFiles([]);
+                      setOrganizeMovedFiles([]);
+                      setOrganizeMethod('');
+                      setOrganizeResult(null);
+                    }}
+                    className="btn"
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      background: 'var(--accent)',
+                      color: 'white'
+                    }}
+                  >
+                    🔄 다른 폴더 정리하기
+                  </button>
+                </div>
+              )}
+
+              {/* 오류 메시지 */}
+              {organizeResult && organizeResult.startsWith('오류') && (
+                <div
+                  className="card"
+                  style={{
+                    padding: '12px 16px',
+                    background: 'var(--error-bg)',
+                    color: 'var(--error)',
+                    fontSize: '13px'
+                  }}
+                >
+                  {organizeResult}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ===== SETTINGS ===== */}
           {tab === "settings" && !selectedMemo && (

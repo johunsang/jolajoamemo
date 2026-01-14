@@ -695,6 +695,201 @@ fn search_attachments(query: String) -> Result<Vec<Attachment>, String> {
     db::search_attachments(&query).map_err(|e| e.to_string())
 }
 
+// ===== 폴더 정리 기능 =====
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FileInfo {
+    pub name: String,
+    pub path: String,
+    pub size: u64,
+    pub extension: String,
+    pub modified: String,
+    pub is_dir: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OrganizePlan {
+    pub file_path: String,
+    pub file_name: String,
+    pub suggested_folder: String,
+    pub reason: String,
+    pub selected: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MovedFileInfo {
+    pub file_name: String,
+    pub from_path: String,
+    pub to_path: String,
+    pub to_folder: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OrganizeResult {
+    pub success: bool,
+    pub moved_count: i32,
+    pub failed_count: i32,
+    pub message: String,
+    pub moved_files: Vec<MovedFileInfo>,  // 이동된 파일 상세 정보
+}
+
+// 폴더 스캔
+#[tauri::command]
+fn scan_folder(path: String) -> Result<Vec<FileInfo>, String> {
+    use std::fs;
+
+    let entries = fs::read_dir(&path).map_err(|e| format!("폴더를 읽을 수 없습니다: {}", e))?;
+
+    let mut files: Vec<FileInfo> = Vec::new();
+
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            let metadata = entry.metadata().ok();
+
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            // 숨김 파일 제외
+            if name.starts_with('.') {
+                continue;
+            }
+
+            let is_dir = path.is_dir();
+            let extension = if is_dir {
+                String::new()
+            } else {
+                path.extension()
+                    .map(|e| e.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            };
+
+            let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+            let modified = metadata
+                .and_then(|m| m.modified().ok())
+                .map(|t| {
+                    let datetime: chrono::DateTime<chrono::Local> = t.into();
+                    datetime.format("%Y-%m-%d %H:%M").to_string()
+                })
+                .unwrap_or_default();
+
+            files.push(FileInfo {
+                name,
+                path: path.to_string_lossy().to_string(),
+                size,
+                extension,
+                modified,
+                is_dir,
+            });
+        }
+    }
+
+    // 파일명으로 정렬
+    files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    Ok(files)
+}
+
+// AI로 파일 정리 분석
+#[tauri::command]
+async fn analyze_files_for_organization(files: Vec<FileInfo>) -> Result<Vec<OrganizePlan>, String> {
+    let api_key = db::get_setting("gemini_api_key").map_err(|e| e.to_string())?;
+    if api_key.is_empty() {
+        return Err("API 키를 먼저 설정해주세요".to_string());
+    }
+
+    let model = db::get_setting("gemini_model").unwrap_or_default();
+
+    // 파일만 필터링 (폴더 제외) 및 튜플로 변환
+    let file_tuples: Vec<(String, String, u64, String, String)> = files
+        .iter()
+        .filter(|f| !f.is_dir)
+        .map(|f| (f.name.clone(), f.extension.clone(), f.size, f.modified.clone(), f.path.clone()))
+        .collect();
+
+    if file_tuples.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let ai_results = ai::analyze_files_for_organization(&api_key, &model, &file_tuples).await?;
+
+    // 결과를 OrganizePlan으로 변환
+    let plans: Vec<OrganizePlan> = ai_results
+        .into_iter()
+        .map(|(file_path, file_name, suggested_folder, reason)| OrganizePlan {
+            file_path,
+            file_name,
+            suggested_folder,
+            reason,
+            selected: true,
+        })
+        .collect();
+
+    Ok(plans)
+}
+
+// 파일 정리 실행
+#[tauri::command]
+fn execute_organization(base_path: String, plans: Vec<OrganizePlan>) -> Result<OrganizeResult, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let mut moved_count = 0;
+    let mut failed_count = 0;
+    let mut moved_files: Vec<MovedFileInfo> = Vec::new();
+
+    for plan in plans {
+        if !plan.selected {
+            continue;
+        }
+
+        let source = Path::new(&plan.file_path);
+        let target_dir = Path::new(&base_path).join(&plan.suggested_folder);
+
+        // 대상 폴더 생성
+        if !target_dir.exists() {
+            if let Err(_) = fs::create_dir_all(&target_dir) {
+                failed_count += 1;
+                continue;
+            }
+        }
+
+        let target_path = target_dir.join(&plan.file_name);
+
+        // 파일 이동
+        let move_success = if let Err(_) = fs::rename(source, &target_path) {
+            // rename 실패 시 copy + delete 시도
+            if let Ok(_) = fs::copy(source, &target_path) {
+                fs::remove_file(source).ok();
+                true
+            } else {
+                false
+            }
+        } else {
+            true
+        };
+
+        if move_success {
+            moved_count += 1;
+            moved_files.push(MovedFileInfo {
+                file_name: plan.file_name.clone(),
+                from_path: plan.file_path.clone(),
+                to_path: target_path.to_string_lossy().to_string(),
+                to_folder: plan.suggested_folder.clone(),
+            });
+        } else {
+            failed_count += 1;
+        }
+    }
+
+    Ok(OrganizeResult {
+        success: failed_count == 0,
+        moved_count,
+        failed_count,
+        message: format!("{}개 파일 이동 완료, {}개 실패", moved_count, failed_count),
+        moved_files,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -702,6 +897,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir().expect("Failed to get app dir");
             db::init_db(app_dir).expect("Failed to init database");
@@ -737,7 +933,10 @@ pub fn run() {
             get_attachments,
             remove_attachment,
             open_attachment,
-            search_attachments
+            search_attachments,
+            scan_folder,
+            analyze_files_for_organization,
+            execute_organization
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
