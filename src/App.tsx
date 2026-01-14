@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -93,6 +93,12 @@ function App() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [editTxType, setEditTxType] = useState<string>('expense');
+  const [editTxAmount, setEditTxAmount] = useState<string>('');
+  const [editTxDesc, setEditTxDesc] = useState<string>('');
+  const [editTxCategory, setEditTxCategory] = useState<string>('');
+  const [editTxDate, setEditTxDate] = useState<string>('');
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
@@ -101,6 +107,9 @@ function App() {
   const [editCategory, setEditCategory] = useState("");
   const [editTags, setEditTags] = useState("");
   const [saving, setSaving] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [savedWindowSize, setSavedWindowSize] = useState<{ width: number; height: number } | null>(null);
 
   const [draggedMemo, setDraggedMemo] = useState<Memo | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
@@ -151,6 +160,38 @@ function App() {
     try {
       const list = await invoke<Transaction[]>("get_transactions");
       setTransactions(list);
+    } catch (e) { console.error(e); }
+  };
+
+  const startEditTx = (tx: Transaction) => {
+    setEditingTx(tx);
+    setEditTxType(tx.tx_type);
+    setEditTxAmount(tx.amount.toString());
+    setEditTxDesc(tx.description);
+    setEditTxCategory(tx.category || '');
+    setEditTxDate(tx.tx_date || '');
+  };
+
+  const saveEditTx = async () => {
+    if (!editingTx) return;
+    try {
+      await invoke("update_transaction", {
+        id: editingTx.id,
+        txType: editTxType,
+        amount: parseInt(editTxAmount) || 0,
+        description: editTxDesc,
+        category: editTxCategory || null,
+        txDate: editTxDate || null,
+      });
+      await loadTransactions();
+      setEditingTx(null);
+    } catch (e) { console.error(e); }
+  };
+
+  const deleteTx = async (id: number) => {
+    try {
+      await invoke("delete_transaction", { id });
+      await loadTransactions();
     } catch (e) { console.error(e); }
   };
 
@@ -223,6 +264,38 @@ function App() {
     }
     setSaving(false);
   }, [selectedMemo, editTitle, editContent, editCategory, editTags]);
+
+  // 메모 재분석 (AI로 일정/할일/거래 재추출)
+  const reanalyzeMemo = useCallback(async () => {
+    if (!selectedMemo) return;
+
+    setReanalyzing(true);
+    try {
+      const result = await invoke<InputResult>("reanalyze_memo", {
+        id: selectedMemo.id,
+        newContent: editContent
+      });
+
+      if (result.success) {
+        // 관련 데이터 새로고침
+        const [newSchedules, newTodos, newTransactions] = await Promise.all([
+          invoke<Schedule[]>("get_schedules"),
+          invoke<Todo[]>("get_todos"),
+          invoke<Transaction[]>("get_transactions")
+        ]);
+        setSchedules(newSchedules);
+        setTodos(newTodos);
+        setTransactions(newTransactions);
+        setResult(`재분석 완료: ${result.message}`);
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      console.error(e);
+      setError(String(e));
+    }
+    setReanalyzing(false);
+  }, [selectedMemo, editContent]);
 
   // 편집 필드 변경 시 자동 저장 트리거 (1초 debounce)
   useEffect(() => {
@@ -297,6 +370,31 @@ function App() {
       await win.setAlwaysOnTop(newVal);
       await invoke("save_setting", { key: "always_on_top", value: newVal.toString() });
     } catch (e) { console.error(e); }
+  };
+
+  const toggleMinimized = async () => {
+    try {
+      const win = getCurrentWindow();
+      const factor = await win.scaleFactor();
+      const size = await win.innerSize();
+      const currentWidth = Math.round(size.width / factor);
+      const currentHeight = Math.round(size.height / factor);
+
+      if (!minimized) {
+        // 현재 크기 저장 후 높이만 헤더로 줄임
+        setSavedWindowSize({ width: currentWidth, height: currentHeight });
+        setMinimized(true);
+        await win.setSize(new LogicalSize(Math.round(currentWidth / 3), 80));
+      } else {
+        // 원래 크기로 복원
+        setMinimized(false);
+        if (savedWindowSize) {
+          await win.setSize(new LogicalSize(savedWindowSize.width, savedWindowSize.height));
+        } else {
+          await win.setSize(new LogicalSize(700, 500));
+        }
+      }
+    } catch (e) { console.error("toggleMinimized error:", e); }
   };
 
   const loadUsage = async () => {
@@ -634,16 +732,21 @@ function App() {
         } as React.CSSProperties}
       >
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="btn"
-            style={{ padding: '4px 8px' }}
-          >
-            {sidebarOpen ? '◁' : '▷'}
-          </button>
+          {!minimized && (
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="btn"
+              style={{ padding: '4px 8px' }}
+            >
+              {sidebarOpen ? '◁' : '▷'}
+            </button>
+          )}
+          {minimized && (
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>📝 JolaJoa Memo</span>
+          )}
         </div>
 
-        <nav className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {!minimized && <nav className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {/* 그룹 1: 메모, 검색 */}
           <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', marginRight: '12px', border: '1px solid var(--border-light)' }}>
             {[
@@ -704,30 +807,49 @@ function App() {
               설정
             </button>
           </div>
-        </nav>
+        </nav>}
 
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {saving && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>저장중...</span>}
+          {!minimized && saving && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>저장중...</span>}
+          {!minimized && (
+            <>
+              <button
+                onClick={toggleAlwaysOnTop}
+                className="btn"
+                style={{ padding: '4px 8px', background: alwaysOnTop ? 'var(--bg-active)' : 'transparent' }}
+                title="항상 위에"
+              >
+                📌
+              </button>
+              <button
+                onClick={toggleDarkMode}
+                className="btn"
+                style={{ padding: '4px 8px' }}
+              >
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+            </>
+          )}
           <button
-            onClick={toggleAlwaysOnTop}
+            onClick={toggleMinimized}
             className="btn"
-            style={{ padding: '4px 8px', background: alwaysOnTop ? 'var(--bg-active)' : 'transparent' }}
-            title="항상 위에"
+            style={{
+              padding: minimized ? '4px 12px' : '4px 8px',
+              background: minimized ? 'var(--accent)' : 'transparent',
+              color: minimized ? '#fff' : 'var(--text)',
+              fontWeight: 500,
+              fontSize: '12px',
+              borderRadius: '4px'
+            }}
+            title={minimized ? "확대" : "축소"}
           >
-            📌
-          </button>
-          <button
-            onClick={toggleDarkMode}
-            className="btn"
-            style={{ padding: '4px 8px' }}
-          >
-            {darkMode ? '☀️' : '🌙'}
+            {minimized ? '↗' : '↙'}
           </button>
         </div>
       </div>
 
       {/* ===== UPDATE BANNER ===== */}
-      {updateAvailable && (
+      {!minimized && updateAvailable && (
         <div style={{ background: 'var(--accent)', color: '#ffffff' }}>
           <div className="flex items-center justify-between px-6 py-3">
             <span className="font-bold uppercase">
@@ -762,7 +884,7 @@ function App() {
       )}
 
       {/* ===== MAIN LAYOUT ===== */}
-      <div className="flex-1 flex overflow-hidden">
+      {!minimized && <div className="flex-1 flex overflow-hidden">
         {/* ===== LEFT SIDEBAR ===== */}
         {sidebarOpen && (
         <div className="w-52 flex flex-col overflow-hidden" style={{ borderRight: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
@@ -1242,43 +1364,104 @@ function App() {
                               className="flex items-center justify-between p-2"
                               style={{
                                 border: '1px solid var(--border)',
-                                background: 'var(--bg)',
+                                background: editingTx?.id === tx.id ? 'var(--bg-secondary)' : 'var(--bg)',
                                 borderRadius: '3px'
                               }}
                             >
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    style={{
-                                      fontSize: '9px',
-                                      padding: '1px 4px',
-                                      background: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)',
-                                      color: '#fff',
-                                      borderRadius: '2px'
-                                    }}
-                                  >
-                                    {tx.tx_type === 'income' ? '수입' : '지출'}
-                                  </span>
-                                  <span style={{ fontSize: '12px' }}>{tx.description}</span>
+                              {editingTx?.id === tx.id ? (
+                                // 수정 모드
+                                <div className="flex-1 space-y-2">
+                                  <div className="flex gap-2">
+                                    <select
+                                      value={editTxType}
+                                      onChange={(e) => setEditTxType(e.target.value)}
+                                      className="input"
+                                      style={{ padding: '4px', fontSize: '11px', width: '70px' }}
+                                    >
+                                      <option value="income">수입</option>
+                                      <option value="expense">지출</option>
+                                    </select>
+                                    <input
+                                      type="number"
+                                      value={editTxAmount}
+                                      onChange={(e) => setEditTxAmount(e.target.value)}
+                                      className="input"
+                                      placeholder="금액"
+                                      style={{ padding: '4px', fontSize: '11px', width: '100px' }}
+                                    />
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={editTxDesc}
+                                    onChange={(e) => setEditTxDesc(e.target.value)}
+                                    className="input w-full"
+                                    placeholder="설명"
+                                    style={{ padding: '4px', fontSize: '11px' }}
+                                  />
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="text"
+                                      value={editTxCategory}
+                                      onChange={(e) => setEditTxCategory(e.target.value)}
+                                      className="input flex-1"
+                                      placeholder="카테고리"
+                                      style={{ padding: '4px', fontSize: '11px' }}
+                                    />
+                                    <input
+                                      type="date"
+                                      value={editTxDate}
+                                      onChange={(e) => setEditTxDate(e.target.value)}
+                                      className="input"
+                                      style={{ padding: '4px', fontSize: '11px' }}
+                                    />
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button onClick={saveEditTx} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '10px' }}>저장</button>
+                                    <button onClick={() => setEditingTx(null)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '10px' }}>취소</button>
+                                  </div>
                                 </div>
-                                <div className="flex gap-2 mt-1">
-                                  {tx.category && (
-                                    <span className="tag" style={{ fontSize: '9px' }}>{tx.category}</span>
-                                  )}
-                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                    {tx.tx_date ? tx.tx_date.substring(5) : tx.created_at.substring(5, 10)}
-                                  </span>
-                                </div>
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: '13px',
-                                  fontWeight: 600,
-                                  color: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)'
-                                }}
-                              >
-                                {tx.tx_type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()}원
-                              </div>
+                              ) : (
+                                // 일반 모드
+                                <>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        style={{
+                                          fontSize: '9px',
+                                          padding: '1px 4px',
+                                          background: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)',
+                                          color: '#fff',
+                                          borderRadius: '2px'
+                                        }}
+                                      >
+                                        {tx.tx_type === 'income' ? '수입' : '지출'}
+                                      </span>
+                                      <span style={{ fontSize: '12px' }}>{tx.description}</span>
+                                    </div>
+                                    <div className="flex gap-2 mt-1">
+                                      {tx.category && (
+                                        <span className="tag" style={{ fontSize: '9px' }}>{tx.category}</span>
+                                      )}
+                                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                        {tx.tx_date ? tx.tx_date.substring(5) : tx.created_at.substring(5, 10)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      style={{
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        color: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)'
+                                      }}
+                                    >
+                                      {tx.tx_type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()}원
+                                    </div>
+                                    <button onClick={() => startEditTx(tx)} className="btn" style={{ padding: '2px 6px', fontSize: '10px' }}>✎</button>
+                                    <button onClick={() => deleteTx(tx.id)} className="btn btn-danger" style={{ padding: '2px 6px', fontSize: '10px' }}>✕</button>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1441,6 +1624,7 @@ function App() {
                 </div>
                 <div className="flex gap-1">
                   <button onClick={autoSave} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '10px' }}>{saving ? '...' : 'SAVE'}</button>
+                  <button onClick={reanalyzeMemo} className="btn" style={{ padding: '4px 8px', fontSize: '10px', background: 'var(--accent)', color: '#fff' }} disabled={reanalyzing}>{reanalyzing ? '...' : 'AI'}</button>
                   <button onClick={deleteMemo} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '10px' }}>DEL</button>
                   <button onClick={() => setSelectedMemo(null)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '10px' }}>X</button>
                 </div>
@@ -1494,7 +1678,7 @@ function App() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

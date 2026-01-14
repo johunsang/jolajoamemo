@@ -317,6 +317,132 @@ fn update_memo(id: i64, title: String, formatted_content: String, category: Stri
     db::update_memo_full(id, &title, &formatted_content, &category, &tags).map_err(|e| e.to_string())
 }
 
+// 메모 재분석 (내용 변경 시 일정/할일/거래 업데이트)
+#[tauri::command]
+async fn reanalyze_memo(id: i64, new_content: String) -> Result<InputResult, String> {
+    let api_key = db::get_setting("gemini_api_key").map_err(|e| e.to_string())?;
+    if api_key.is_empty() {
+        return Err("API 키를 먼저 설정해주세요".to_string());
+    }
+
+    let model = db::get_setting("gemini_model").unwrap_or_default();
+
+    // 기존 연결 항목 삭제
+    db::delete_schedules_by_memo_id(id).ok();
+    db::delete_todos_by_memo_id(id).ok();
+    db::delete_transactions_by_memo_id(id).ok();
+
+    // 기존 메모 정보 (병합용으로 빈 목록 전달)
+    let existing_categories = db::get_all_categories().map_err(|e| e.to_string())?;
+
+    // AI 재분석 (병합 없이 단일 분석)
+    let (items, usage) = ai::analyze_multi_memo(&api_key, &model, &new_content, &[], &existing_categories).await?;
+
+    // 사용량 기록
+    let model_name = if model.is_empty() { "gemini-3-flash-preview" } else { &model };
+    db::log_api_usage(
+        "reanalyze",
+        model_name,
+        usage.input_tokens,
+        usage.output_tokens,
+        usage.cost_usd,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let mut schedules_added = 0;
+    let mut todos_added = 0;
+    let mut transactions_added = 0;
+    let mut title = String::new();
+
+    // 첫 번째 분석 결과로 메모 업데이트
+    if let Some(analysis) = items.first() {
+        title = analysis.title.clone();
+        let tags_str = analysis.tags.join(", ");
+
+        // 메모 내용 업데이트
+        db::update_memo(
+            id,
+            &new_content,
+            &analysis.formatted_content,
+            &analysis.summary,
+            &tags_str,
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+
+        // 메모 제목/카테고리 업데이트
+        db::update_memo_full(id, &analysis.title, &analysis.formatted_content, &analysis.category, &tags_str)
+            .map_err(|e| e.to_string())?;
+
+        // 일정 저장
+        for schedule_info in &analysis.schedules {
+            let schedule = Schedule {
+                id: 0,
+                memo_id: Some(id),
+                title: schedule_info.title.clone(),
+                start_time: schedule_info.start_time.clone(),
+                end_time: schedule_info.end_time.clone(),
+                location: schedule_info.location.clone(),
+                description: schedule_info.description.clone(),
+                google_event_id: None,
+                created_at: String::new(),
+            };
+            db::save_schedule(&schedule).map_err(|e| e.to_string())?;
+            schedules_added += 1;
+        }
+
+        // 할일 저장
+        for todo_info in &analysis.todos {
+            let todo = Todo {
+                id: 0,
+                memo_id: Some(id),
+                title: todo_info.title.clone(),
+                completed: false,
+                priority: todo_info.priority.clone(),
+                due_date: todo_info.due_date.clone(),
+                created_at: String::new(),
+            };
+            db::save_todo(&todo).map_err(|e| e.to_string())?;
+            todos_added += 1;
+        }
+
+        // 거래 저장
+        for tx_info in &analysis.transactions {
+            let transaction = Transaction {
+                id: 0,
+                memo_id: Some(id),
+                tx_type: tx_info.tx_type.clone(),
+                amount: tx_info.amount,
+                description: tx_info.description.clone(),
+                category: tx_info.category.clone(),
+                tx_date: tx_info.tx_date.clone(),
+                created_at: String::new(),
+            };
+            db::save_transaction(&transaction).map_err(|e| e.to_string())?;
+            transactions_added += 1;
+        }
+    }
+
+    let mut extra_parts = Vec::new();
+    if schedules_added > 0 { extra_parts.push(format!("일정 {}개", schedules_added)); }
+    if todos_added > 0 { extra_parts.push(format!("할일 {}개", todos_added)); }
+    if transactions_added > 0 { extra_parts.push(format!("가계부 {}건", transactions_added)); }
+    let extra_msg = if extra_parts.is_empty() { String::new() } else { format!(" ({})", extra_parts.join(", ")) };
+
+    Ok(InputResult {
+        success: true,
+        message: format!("'{}' 재분석 완료{}", title, extra_msg),
+        memo_id: Some(id),
+        merged: false,
+        title,
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cost_usd: usage.cost_usd,
+        schedules_added,
+        todos_added,
+    })
+}
+
 // 메모 삭제
 #[tauri::command]
 fn delete_memo(id: i64) -> Result<(), String> {
@@ -395,6 +521,26 @@ fn delete_transaction(id: i64) -> Result<(), String> {
     db::delete_transaction(id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn update_transaction(
+    id: i64,
+    tx_type: String,
+    amount: i64,
+    description: String,
+    category: Option<String>,
+    tx_date: Option<String>,
+) -> Result<(), String> {
+    db::update_transaction(
+        id,
+        &tx_type,
+        amount,
+        &description,
+        category.as_deref(),
+        tx_date.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -418,6 +564,7 @@ pub fn run() {
             export_db,
             import_db,
             update_memo,
+            reanalyze_memo,
             delete_memo,
             delete_all_memos,
             get_schedules,
@@ -426,7 +573,8 @@ pub fn run() {
             toggle_todo,
             delete_todo,
             get_transactions,
-            delete_transaction
+            delete_transaction,
+            update_transaction
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

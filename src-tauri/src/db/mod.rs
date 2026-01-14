@@ -620,3 +620,54 @@ pub fn delete_transaction(id: i64) -> Result<()> {
     conn.execute("DELETE FROM transactions WHERE id = ?1", params![id])?;
     Ok(())
 }
+
+// 거래 수정
+pub fn update_transaction(
+    id: i64,
+    tx_type: &str,
+    amount: i64,
+    description: &str,
+    category: Option<&str>,
+    tx_date: Option<&str>,
+) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute(
+        "UPDATE transactions SET tx_type = ?1, amount = ?2, description = ?3, category = ?4, tx_date = ?5 WHERE id = ?6",
+        params![tx_type, amount, description, category, tx_date, id],
+    )?;
+    Ok(())
+}
+
+// ===== 메모 연결 항목 삭제 (재분석용) =====
+
+// 메모에 연결된 일정 삭제
+pub fn delete_schedules_by_memo_id(memo_id: i64) -> Result<usize> {
+    let conn = get_db().lock();
+    let count = conn.execute("DELETE FROM schedules WHERE memo_id = ?1", params![memo_id])?;
+    Ok(count)
+}
+
+// 메모에 연결된 할일 삭제
+pub fn delete_todos_by_memo_id(memo_id: i64) -> Result<usize> {
+    let conn = get_db().lock();
+    let count = conn.execute("DELETE FROM todos WHERE memo_id = ?1", params![memo_id])?;
+    Ok(count)
+}
+
+// 메모에 연결된 거래 삭제
+pub fn delete_transactions_by_memo_id(memo_id: i64) -> Result<usize> {
+    let conn = get_db().lock();
+    let count = conn.execute("DELETE FROM transactions WHERE memo_id = ?1", params![memo_id])?;
+    Ok(count)
+}
+
+// 메모 원본 내용 조회
+pub fn get_memo_content(id: i64) -> Result<String> {
+    let conn = get_db().lock();
+    let content: String = conn.query_row(
+        "SELECT content FROM memos WHERE id = ?1",
+        params![id],
+        |row| row.get(0),
+    )?;
+    Ok(content)
+}
