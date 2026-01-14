@@ -1,7 +1,7 @@
 mod ai;
 mod db;
 
-use db::{Memo, Schedule, Todo, Transaction};
+use db::{Attachment, Memo, Schedule, Todo, Transaction};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
@@ -77,6 +77,8 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
     let mut todos_added = 0;
     let mut transactions_added = 0;
 
+    let mut last_memo_id: Option<i64> = None;  // 마지막 메모 ID 저장
+
     for analysis in items {
         let tags_str = analysis.tags.join(", ");
         let mut memo_id: Option<i64> = None;
@@ -106,6 +108,7 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
                 .map_err(|e| e.to_string())?;
 
                 memo_id = Some(merge_id);
+                last_memo_id = memo_id;  // 마지막 메모 ID 저장
                 merged_count += 1;
                 titles.push(format!("{}(병합)", existing.title));
             }
@@ -126,6 +129,7 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
 
             let new_id = db::save_memo(&new_memo).map_err(|e| e.to_string())?;
             memo_id = Some(new_id);
+            last_memo_id = memo_id;  // 마지막 메모 ID 저장
             saved_count += 1;
             titles.push(analysis.title);
         }
@@ -200,7 +204,7 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
     Ok(InputResult {
         success: true,
         message,
-        memo_id: None,
+        memo_id: last_memo_id,
         merged: merged_count > 0,
         title: titles.join(", "),
         input_tokens: usage.input_tokens,
@@ -313,8 +317,26 @@ fn import_db(json_data: String) -> Result<i32, String> {
 
 // 메모 업데이트 (편집용)
 #[tauri::command]
-fn update_memo(id: i64, title: String, formatted_content: String, category: String, tags: String) -> Result<(), String> {
-    db::update_memo_full(id, &title, &formatted_content, &category, &tags).map_err(|e| e.to_string())
+fn update_memo(id: i64, title: String, formatted_content: String, category: String, tags: String, content: Option<String>) -> Result<(), String> {
+    db::update_memo_full(id, &title, &formatted_content, &category, &tags, content.as_deref()).map_err(|e| e.to_string())
+}
+
+// 카테고리 목록 조회
+#[tauri::command]
+fn get_categories() -> Result<Vec<String>, String> {
+    db::get_all_categories().map_err(|e| e.to_string())
+}
+
+// 카테고리 삭제
+#[tauri::command]
+fn delete_category(category: String) -> Result<usize, String> {
+    db::delete_category(&category).map_err(|e| e.to_string())
+}
+
+// 카테고리 이름 변경
+#[tauri::command]
+fn rename_category(old_name: String, new_name: String) -> Result<usize, String> {
+    db::rename_category(&old_name, &new_name).map_err(|e| e.to_string())
 }
 
 // 메모 재분석 (내용 변경 시 일정/할일/거래 업데이트)
@@ -371,7 +393,7 @@ async fn reanalyze_memo(id: i64, new_content: String) -> Result<InputResult, Str
         .map_err(|e| e.to_string())?;
 
         // 메모 제목/카테고리 업데이트
-        db::update_memo_full(id, &analysis.title, &analysis.formatted_content, &analysis.category, &tags_str)
+        db::update_memo_full(id, &analysis.title, &analysis.formatted_content, &analysis.category, &tags_str, Some(&new_content))
             .map_err(|e| e.to_string())?;
 
         // 일정 저장
@@ -541,12 +563,145 @@ fn update_transaction(
     .map_err(|e| e.to_string())
 }
 
+// ===== 첨부파일 관련 명령어 =====
+
+// 첨부파일 추가
+#[tauri::command]
+async fn add_attachment(
+    app_handle: tauri::AppHandle,
+    memo_id: i64,
+    file_path: String,
+) -> Result<Attachment, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let original_path = Path::new(&file_path);
+    if !original_path.exists() {
+        return Err("파일을 찾을 수 없습니다".to_string());
+    }
+
+    let file_name = original_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let file_size = fs::metadata(&file_path)
+        .map(|m| m.len() as i64)
+        .unwrap_or(0);
+
+    // 설정 확인: 복사 모드 여부
+    let copy_mode = db::get_setting("attachment_copy_mode")
+        .unwrap_or_default();
+    let is_copy = copy_mode == "copy";
+
+    let stored_path = if is_copy {
+        // 저장 경로 가져오기
+        let storage_path = db::get_setting("attachment_storage_path")
+            .unwrap_or_default();
+
+        let storage_dir = if storage_path.is_empty() {
+            // 기본 경로: 앱 데이터 디렉토리/attachments
+            app_handle
+                .path()
+                .app_data_dir()
+                .map_err(|e| e.to_string())?
+                .join("attachments")
+        } else {
+            Path::new(&storage_path).to_path_buf()
+        };
+
+        // 디렉토리 생성
+        fs::create_dir_all(&storage_dir).map_err(|e| e.to_string())?;
+
+        // 중복 파일명 처리
+        let mut target_path = storage_dir.join(&file_name);
+        let mut counter = 1;
+        while target_path.exists() {
+            let stem = original_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("file");
+            let ext = original_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            let new_name = if ext.is_empty() {
+                format!("{}_{}", stem, counter)
+            } else {
+                format!("{}_{}.{}", stem, counter, ext)
+            };
+            target_path = storage_dir.join(new_name);
+            counter += 1;
+        }
+
+        // 파일 복사
+        fs::copy(&file_path, &target_path).map_err(|e| e.to_string())?;
+        target_path.to_string_lossy().to_string()
+    } else {
+        // 링크 모드: 원본 경로 그대로 사용
+        file_path.clone()
+    };
+
+    let attachment = Attachment {
+        id: 0,
+        memo_id,
+        file_name,
+        file_path: stored_path.clone(),
+        original_path: file_path,
+        is_copy,
+        file_size,
+        created_at: String::new(),
+    };
+
+    let id = db::save_attachment(&attachment).map_err(|e| e.to_string())?;
+
+    Ok(Attachment {
+        id,
+        ..attachment
+    })
+}
+
+// 메모별 첨부파일 조회
+#[tauri::command]
+fn get_attachments(memo_id: i64) -> Result<Vec<Attachment>, String> {
+    db::get_attachments_by_memo(memo_id).map_err(|e| e.to_string())
+}
+
+// 첨부파일 삭제
+#[tauri::command]
+fn remove_attachment(id: i64) -> Result<(), String> {
+    use std::fs;
+
+    let attachment = db::delete_attachment(id).map_err(|e| e.to_string())?;
+
+    // 복사된 파일인 경우 파일도 삭제
+    if attachment.is_copy {
+        fs::remove_file(&attachment.file_path).ok(); // 실패해도 무시
+    }
+
+    Ok(())
+}
+
+// 첨부파일 열기
+#[tauri::command]
+fn open_attachment(file_path: String) -> Result<(), String> {
+    open::that(&file_path).map_err(|e| e.to_string())
+}
+
+// 첨부파일 검색
+#[tauri::command]
+fn search_attachments(query: String) -> Result<Vec<Attachment>, String> {
+    db::search_attachments(&query).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir().expect("Failed to get app dir");
             db::init_db(app_dir).expect("Failed to init database");
@@ -564,6 +719,9 @@ pub fn run() {
             export_db,
             import_db,
             update_memo,
+            get_categories,
+            delete_category,
+            rename_category,
             reanalyze_memo,
             delete_memo,
             delete_all_memos,
@@ -574,7 +732,12 @@ pub fn run() {
             delete_todo,
             get_transactions,
             delete_transaction,
-            update_transaction
+            update_transaction,
+            add_attachment,
+            get_attachments,
+            remove_attachment,
+            open_attachment,
+            search_attachments
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

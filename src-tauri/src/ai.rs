@@ -457,6 +457,8 @@ pub async fn analyze_multi_memo(
     // 현재 날짜/시간 가져오기
     let now = chrono::Local::now();
     let current_datetime = now.format("%Y-%m-%d %H:%M").to_string();
+    let today_date = now.format("%Y-%m-%d").to_string();  // 오늘 날짜만
+    let tomorrow_date = (now + chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
     let current_weekday = match now.weekday() {
         chrono::Weekday::Mon => "월요일",
         chrono::Weekday::Tue => "화요일",
@@ -466,6 +468,11 @@ pub async fn analyze_multi_memo(
         chrono::Weekday::Sat => "토요일",
         chrono::Weekday::Sun => "일요일",
     };
+
+    // "오늘", "내일" 등을 실제 날짜로 미리 치환
+    let preprocessed_content = masked_content
+        .replace("오늘", &format!("{}(오늘)", today_date))
+        .replace("내일", &format!("{}(내일)", tomorrow_date));
 
     let prompt = format!(
         r#"당신은 메모 정리 AI입니다. 사용자가 입력한 텍스트를 분석하세요.
@@ -481,7 +488,13 @@ pub async fn analyze_multi_memo(
 ⚠️ 조금이라도 해당되면 반드시 추출하세요!
 #########################################################
 
+##############################################
+## ⚠️⚠️⚠️ 오늘 날짜: {} ⚠️⚠️⚠️
 ## 현재 시간: {} ({})
+##############################################
+## 🚨 "오늘"이라고 말하면 반드시 {} 사용!!! 🚨
+## 🚨 절대로 하루를 더하지 마세요!!! 🚨
+##############################################
 
 ## 입력된 텍스트:
 {}
@@ -529,17 +542,28 @@ pub async fn analyze_multi_memo(
 - **완전히 다른 주제**일 때만 분리 (예: 연락처 + 아이디어 = 2개)
 - 관련된 내용은 절대 쪼개지 말고 하나로!
 
-### 3. 카테고리 분류 (내용에 맞게 정확히!)
-- 메모 내용을 보고 가장 적합한 카테고리를 선택/생성
+### 3. 카테고리 분류 (구체적으로! "메모" 사용 금지!)
+- 메모 내용을 보고 가장 **구체적인** 카테고리를 선택/생성
 - 기존 카테고리가 **정확히** 맞으면 사용, 아니면 새로 생성
+- **⚠️ "메모"는 카테고리로 사용하지 마세요! 너무 일반적입니다!**
+- 카테고리는 2~4글자 한국어로, 내용을 명확히 설명해야 함
 - 카테고리 예시:
   - 연락처: 사람 이름, 전화번호, 이메일
   - 주소: 집주소, 회사주소, 배송주소
   - 계정정보: 아이디, 비밀번호, 서비스 정보
   - 회의록: 회의 내용, 미팅 기록
   - 아이디어: 생각, 계획, 브레인스토밍
-  - 메모: 기타 일반 메모
+  - 일기: 하루 기록, 감정, 일상
+  - 레시피: 요리법, 음식 만들기
+  - 쇼핑: 구매 목록, 살 것
+  - 건강: 운동, 식단, 병원
+  - 학습: 공부, 강의, 배움
+  - 업무: 일, 프로젝트, 작업
+  - 여행: 여행 계획, 관광지
+  - 리뷰: 영화, 책, 제품 후기
+  - 링크: URL, 웹사이트, 참고자료
 - **다른 종류의 정보를 같은 카테고리에 넣지 마세요!**
+- **"메모", "기타", "일반" 같은 모호한 카테고리 절대 금지!**
 
 ### 4. 병합 규칙 (매우 엄격하게!)
 - **should_merge_with는 거의 항상 null로 설정하세요!**
@@ -555,16 +579,19 @@ pub async fn analyze_multi_memo(
 - "예약", "진료", "상담", "점검"
 - 날짜/시간 + 장소가 있으면 무조건 일정!
 
-**날짜 변환 규칙:**
-- "내일" → 현재시간+1일 → "2026-01-15T09:00"
-- "내일까지" → 기한이므로 "2026-01-15" (시간 생략 가능)
-- "다음주 월요일" → 실제 날짜 계산
-- **절대로 "내일", "7일 후" 같은 상대적 표현 사용 금지!**
+**날짜 변환 규칙 (⚠️ 최우선!!!):**
+- 🚨🚨🚨 **"오늘" = {} (이 날짜 그대로 사용!!!)** 🚨🚨🚨
+- "오늘 강의" → start_time: "{}T시간"
+- "오늘 8시" → start_time: "{}T20:00"
+- "오늘 저녁" → start_time: "{}T18:00"
+- **절대 +1일 하지 마세요! 오늘은 오늘입니다!**
+- "내일" → {}의 다음날
+- "모레" → {}의 2일 후
 - **반드시 YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM 형식으로!**
 
-**예시:**
-- "내일까지 병원 방문" → schedules에 추가! {{title: "병원 방문", start_time: "2026-01-15", location: "병원"}}
-- "3시에 카페에서 친구 만남" → schedules에 추가!
+**예시 (오늘이 {}일 때):**
+- "오늘 저녁 8시 강의" → start_time: "{}T20:00" ✓
+- "오늘 3시 회의" → start_time: "{}T15:00" ✓
 
 ### 5. 할일 추출 (적극적으로!)
 - 다음 패턴 모두 할일로 추출:
@@ -642,7 +669,11 @@ pub async fn analyze_multi_memo(
 
 일정/할일/거래가 없으면 각각 빈 배열 []로 두세요.
 하나의 주제만 있으면 items에 1개만 넣으세요."#,
-        current_datetime, current_weekday, masked_content, existing_info, categories_info, current_datetime
+        today_date, current_datetime, current_weekday, today_date, preprocessed_content, existing_info, categories_info,
+        // 날짜 변환 규칙 섹션
+        today_date, today_date, today_date, today_date, today_date, today_date, today_date, today_date, today_date,
+        // tx_date 기본값
+        current_datetime
     );
 
     let response = client

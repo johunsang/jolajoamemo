@@ -14,7 +14,7 @@
     "settings": "Settings"
   },
   "input": {
-    "title": "Drop Your Data",
+    "title": "AI Memo",
     "description": "Contacts, meeting notes, ideas, code snippets...\nAI will organize and categorize everything automatically.",
     "placeholder": "Paste or type here...",
     "submit": "Save",
@@ -23,7 +23,7 @@
     "merged": "Merged with existing memo"
   },
   "search": {
-    "title": "Ask Anything",
+    "title": "AI Search",
     "description": "AI will search through your memos and answer your questions.",
     "placeholder": "What do you want to know?",
     "submit": "Go",

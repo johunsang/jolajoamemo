@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -78,12 +81,25 @@ interface Transaction {
   created_at: string;
 }
 
+interface Attachment {
+  id: number;
+  memo_id: number;
+  file_name: string;
+  file_path: string;
+  original_path: string;
+  is_copy: boolean;
+  file_size: number;
+  created_at: string;
+}
+
 function App() {
   const { t, i18n } = useTranslation();
   const [tab, setTab] = useState<Tab>("input");
   const [inputText, setInputText] = useState("");
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashFading, setSplashFading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -114,14 +130,32 @@ function App() {
   const [draggedMemo, setDraggedMemo] = useState<Memo | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [attachmentCopyMode, setAttachmentCopyMode] = useState<string>("link");
+  const [pendingFiles, setPendingFiles] = useState<string[]>([]); // 메모 저장 전 대기 중인 파일들
+  const [memoFilter, setMemoFilter] = useState(""); // 메모 목록 실시간 검색 필터
+  const [memoViewTab, setMemoViewTab] = useState<"formatted" | "original" | "attachments">("formatted"); // 메모 보기 탭
+  const [isEditing, setIsEditing] = useState(false); // 편집 모드
+  const [editOriginal, setEditOriginal] = useState(""); // 원본 편집용
+  const [droppedFiles, setDroppedFiles] = useState<string[]>([]); // Tauri에서 드롭된 파일 경로
+  const [searchedAttachments, setSearchedAttachments] = useState<Attachment[]>([]); // 검색된 첨부 파일
   const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body: string; showDetails?: boolean } | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [selectedMemoIds, setSelectedMemoIds] = useState<Set<number>>(new Set()); // 다중 선택
+  const [lastSelectedMemoId, setLastSelectedMemoId] = useState<number | null>(null); // Shift 선택용 마지막 선택 ID
+  const [renamingCategory, setRenamingCategory] = useState<string | null>(null); // 이름 변경 중인 카테고리
+  const [newCategoryName, setNewCategoryName] = useState(""); // 새 카테고리 이름
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
   const [_opacity, setOpacity] = useState(100);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(208); // 기본 너비 208px (w-52)
+  const [isResizing, setIsResizing] = useState(false);
   const [aiModel, setAiModel] = useState("gemini-3-flash-preview");
   const [appVersion, setAppVersion] = useState("");
+  const [toast, setToast] = useState<string | null>(null); // 토스트 알림
 
   // 무한 스크롤 관련 상태
   const [memoOffset, setMemoOffset] = useState(0);
@@ -146,14 +180,45 @@ function App() {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    loadSettings();
-    loadUsage();
-    loadMemos();
-    loadSchedules();
-    loadTodos();
-    loadTransactions();
-    checkForUpdates();
-    getVersion().then(v => setAppVersion(v)).catch(() => {});
+    const initApp = async () => {
+      // 버전 먼저 가져오기
+      try {
+        const v = await getVersion();
+        setAppVersion(v);
+      } catch (e) {
+        console.error("Failed to get version:", e);
+      }
+
+      // 업데이트 체크 (배너만 표시, 자동 업데이트 안함)
+      try {
+        const update = await check();
+        if (update) {
+          setUpdateAvailable({ version: update.version, body: update.body || "" });
+        }
+      } catch (e) {
+        console.log("Update check failed:", e);
+      }
+
+      // 데이터 로드
+      await Promise.all([
+        loadSettings(),
+        loadUsage(),
+        loadMemos(),
+        loadSchedules(),
+        loadTodos(),
+        loadTransactions()
+      ]);
+
+      // 스플래시 화면 페이드 아웃 (최소 1.5초 유지)
+      setTimeout(() => {
+        setSplashFading(true);
+        setTimeout(() => {
+          setShowSplash(false);
+        }, 500); // 페이드 아웃 애니메이션 시간
+      }, 1500);
+    };
+
+    initApp();
   }, []);
 
   const loadTransactions = async () => {
@@ -195,19 +260,16 @@ function App() {
     } catch (e) { console.error(e); }
   };
 
-  const checkForUpdates = async () => {
-    try {
-      const update = await check();
-      if (update) {
-        setUpdateAvailable({ version: update.version, body: update.body || "" });
-      }
-    } catch (e) {
-      console.log("Update check failed:", e);
-    }
-  };
-
   const installUpdate = async () => {
     if (!updateAvailable) return;
+
+    // 개발 모드 체크 (localhost에서 실행 중이면 개발 모드)
+    const isDev = window.location.hostname === 'localhost';
+    if (isDev) {
+      showToast(`⚠️ 개발 모드 - 프로덕션 빌드에서 업데이트 테스트하세요`, 3000);
+      return;
+    }
+
     setUpdating(true);
     try {
       const update = await check();
@@ -217,6 +279,7 @@ function App() {
       }
     } catch (e) {
       console.error("Update failed:", e);
+      showToast(`❌ 업데이트 실패`, 3000);
       setUpdating(false);
     }
   };
@@ -229,15 +292,288 @@ function App() {
     }
   }, [darkMode]);
 
-  // 메모 선택 시 편집 필드 초기화
+  // Tauri v2 파일 드롭 이벤트 리스너 (여러 방식 시도)
+  useEffect(() => {
+    const cleanups: (() => void)[] = [];
+
+    const setupDragDrop = async () => {
+      // 방법 1: Webview의 onDragDropEvent
+      try {
+        const webview = getCurrentWebview();
+        const unlisten1 = await webview.onDragDropEvent(async (event) => {
+          console.log("Webview drag-drop event:", event);
+          const evt = (event as any).payload || event;
+          if (evt.type === 'drop' && evt.paths?.length > 0) {
+            let paths = evt.paths as string[];
+
+            // macOS file:// URL을 일반 경로로 변환
+            paths = paths.map((p: string) => {
+              if (p.startsWith('file://')) {
+                try {
+                  // URL 디코딩
+                  const url = new URL(p);
+                  return decodeURIComponent(url.pathname);
+                } catch {
+                  return p.replace('file://', '');
+                }
+              }
+              return p;
+            });
+
+            console.log("[Webview] 파일 드롭됨:", paths);
+
+            // 직접 pendingFiles에 추가 (useEffect 대신)
+            setPendingFiles(prev => {
+              const newFiles = paths.filter((path: string) => {
+                const fileName = path.split('/').pop() || path;
+                return !prev.some(p => p.endsWith(fileName));
+              });
+              return [...prev, ...newFiles];
+            });
+            setResult(`파일 ${paths.length}개 추가됨`);
+          }
+          setIsDraggingFile(evt.type === 'over' || evt.type === 'enter');
+        });
+        cleanups.push(unlisten1);
+        console.log("Webview drag-drop listener OK");
+      } catch (e) {
+        console.error("Webview drag-drop failed:", e);
+        console.error("Webview 드래그 설정 실패:", e);
+      }
+
+      // 방법 2: listen으로 tauri://drag-drop 이벤트
+      try {
+        const unlisten2 = await listen<any>("tauri://drag-drop", (event) => {
+          console.log("Listen drag-drop event:", event);
+          const paths = event.payload?.paths || event.payload;
+          if (Array.isArray(paths) && paths.length > 0) {
+            console.log("[Listen] 파일 드롭됨:", paths);
+            setDroppedFiles(paths);
+            setResult(`파일 ${paths.length}개 감지됨 (listen)`);
+          }
+          setIsDraggingFile(false);
+        });
+        cleanups.push(unlisten2);
+        console.log("Listen drag-drop listener OK");
+      } catch (e) {
+        console.error("Listen drag-drop failed:", e);
+      }
+
+      // 방법 3: tauri://file-drop 이벤트 (구버전 호환)
+      try {
+        const unlisten3 = await listen<string[]>("tauri://file-drop", (event) => {
+          console.log("File-drop event:", event);
+          const paths = event.payload;
+          if (Array.isArray(paths) && paths.length > 0) {
+            console.log("[File-drop] 파일 드롭됨:", paths);
+            setDroppedFiles(paths);
+            setResult(`파일 ${paths.length}개 감지됨 (file-drop)`);
+          }
+          setIsDraggingFile(false);
+        });
+        cleanups.push(unlisten3);
+        console.log("File-drop listener OK");
+      } catch (e) {
+        console.error("File-drop failed:", e);
+      }
+
+      // 드래그 진입/이탈 이벤트
+      try {
+        const unlisten4 = await listen("tauri://drag-enter", () => setIsDraggingFile(true));
+        const unlisten5 = await listen("tauri://drag-leave", () => setIsDraggingFile(false));
+        const unlisten6 = await listen("tauri://file-drop-hover", () => setIsDraggingFile(true));
+        const unlisten7 = await listen("tauri://file-drop-cancelled", () => setIsDraggingFile(false));
+        cleanups.push(unlisten4, unlisten5, unlisten6, unlisten7);
+      } catch (e) {
+        console.error("Drag enter/leave failed:", e);
+      }
+    };
+
+    setupDragDrop();
+
+    return () => {
+      cleanups.forEach(fn => fn());
+    };
+  }, []);
+
+  // 드롭된 파일 처리
+  useEffect(() => {
+    if (droppedFiles.length === 0) return;
+
+    // 디버깅: 드롭된 파일 즉시 표시
+    console.log("드롭 이벤트 발생!", { files: droppedFiles, tab, selectedMemo: selectedMemo?.id });
+
+    console.log("Processing dropped files:", droppedFiles);
+    console.log("Current state - tab:", tab, "selectedMemo:", selectedMemo?.id, "memoViewTab:", memoViewTab);
+
+    const handleDroppedFiles = async () => {
+      if (selectedMemo && memoViewTab === "attachments") {
+        // 기존 메모의 첨부 탭에서 드롭 -> 바로 첨부
+        console.log("Adding to existing memo attachments");
+        for (const filePath of droppedFiles) {
+          await addAttachment(filePath);
+        }
+      } else if (tab === "input" && !selectedMemo) {
+        // 새 메모 입력 화면에서 드롭 -> 대기열에 추가
+        console.log("Adding to pending files for new memo");
+        console.log("파일 감지됨!", droppedFiles);
+        setPendingFiles(prev => {
+          const newFiles = droppedFiles.filter(path => {
+            const fileName = path.split('/').pop() || path;
+            return !prev.some(p => p.endsWith(fileName));
+          });
+          console.log("New pending files:", [...prev, ...newFiles]);
+          return [...prev, ...newFiles];
+        });
+      } else if (selectedMemo) {
+        // 다른 탭에서 드롭해도 첨부
+        console.log("Adding to selected memo from other tab");
+        for (const filePath of droppedFiles) {
+          await addAttachment(filePath);
+        }
+      }
+      setDroppedFiles([]);
+    };
+
+    handleDroppedFiles();
+  }, [droppedFiles, selectedMemo, memoViewTab, tab]);
+
+  // 메모 선택 시 편집 필드 초기화 및 첨부파일 로드
   useEffect(() => {
     if (selectedMemo) {
       setEditTitle(selectedMemo.title);
       setEditContent(selectedMemo.formatted_content);
       setEditCategory(selectedMemo.category);
       setEditTags(selectedMemo.tags);
+      setEditOriginal(selectedMemo.content);
+      setIsEditing(false);
+      loadAttachments(selectedMemo.id);
+    } else {
+      setAttachments([]);
+      setIsEditing(false);
     }
   }, [selectedMemo]);
+
+  // 첨부파일 로드
+  const loadAttachments = async (memoId: number) => {
+    try {
+      console.log("Loading attachments for memo:", memoId);
+      const list = await invoke<Attachment[]>("get_attachments", { memoId });
+      console.log("Loaded attachments:", list);
+      setAttachments(list);
+      if (list.length === 0) {
+        console.log("No attachments found for memo", memoId);
+      }
+    } catch (e) {
+      console.error("Failed to load attachments:", e);
+      setError(`첨부파일 로드 실패: ${e}`);
+    }
+  };
+
+  // 첨부파일 추가 (중복 체크)
+  const addAttachment = async (filePath: string) => {
+    if (!selectedMemo) return;
+
+    // 파일명 추출
+    const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
+
+    // 중복 체크: 같은 파일명이 이미 첨부되어 있으면 건너뜀
+    const isDuplicate = attachments.some(att => att.file_name === fileName);
+    if (isDuplicate) {
+      console.log(`File already attached: ${fileName}`);
+      return; // 중복이면 추가 안함
+    }
+
+    try {
+      const attachment = await invoke<Attachment>("add_attachment", {
+        memoId: selectedMemo.id,
+        filePath
+      });
+      setAttachments(prev => [attachment, ...prev]);
+    } catch (e) {
+      console.error("Failed to add attachment:", e);
+      setError(String(e));
+    }
+  };
+
+  // 첨부파일 삭제
+  const removeAttachment = async (id: number) => {
+    try {
+      await invoke("remove_attachment", { id });
+      setAttachments(prev => prev.filter(a => a.id !== id));
+    } catch (e) {
+      console.error("Failed to remove attachment:", e);
+    }
+  };
+
+  // 첨부파일 열기
+  const openAttachment = async (filePath: string) => {
+    try {
+      await invoke("open_attachment", { filePath });
+    } catch (e) {
+      console.error("Failed to open attachment:", e);
+      setError(`파일을 열 수 없습니다: ${e}`);
+    }
+  };
+
+  // 파일 드롭 핸들러 (기존 메모 편집용)
+  const handleFileDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+
+    if (!selectedMemo) return;
+
+    const files = e.dataTransfer.files;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      // Tauri에서는 file.path가 실제 파일 경로
+      const filePath = (file as any).path;
+      if (filePath) {
+        await addAttachment(filePath);
+      }
+    }
+  };
+
+  // 파일 드롭 핸들러 (새 메모 입력용 - 대기열에 추가)
+  const handleInputFileDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+
+    const files = e.dataTransfer.files;
+    const newPaths: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const filePath = (file as any).path;
+      if (filePath) {
+        // 중복 체크
+        const fileName = filePath.split('/').pop() || filePath;
+        if (!pendingFiles.some(p => p.endsWith(fileName))) {
+          newPaths.push(filePath);
+        }
+      }
+    }
+    if (newPaths.length > 0) {
+      setPendingFiles(prev => [...prev, ...newPaths]);
+    }
+  };
+
+  // 대기 중인 파일 제거
+  const removePendingFile = (filePath: string) => {
+    setPendingFiles(prev => prev.filter(p => p !== filePath));
+  };
+
+  // 파일 크기 포맷
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // 토스트 알림 표시
+  const showToast = (message: string, duration = 2000) => {
+    setToast(message);
+    setTimeout(() => setToast(null), duration);
+  };
 
   // 자동 저장 함수 (debounce)
   const autoSave = useCallback(async () => {
@@ -250,20 +586,21 @@ function App() {
         title: editTitle,
         formattedContent: editContent,
         category: editCategory,
-        tags: editTags
+        tags: editTags,
+        content: editOriginal !== selectedMemo.content ? editOriginal : null
       });
       // 사이드바의 메모 목록 업데이트
       setMemos(prev => prev.map(m =>
         m.id === selectedMemo.id
-          ? { ...m, title: editTitle, formatted_content: editContent, category: editCategory, tags: editTags }
+          ? { ...m, title: editTitle, formatted_content: editContent, category: editCategory, tags: editTags, content: editOriginal }
           : m
       ));
-      setSelectedMemo(prev => prev ? { ...prev, title: editTitle, formatted_content: editContent, category: editCategory, tags: editTags } : null);
+      setSelectedMemo(prev => prev ? { ...prev, title: editTitle, formatted_content: editContent, category: editCategory, tags: editTags, content: editOriginal } : null);
     } catch (e) {
       console.error(e);
     }
     setSaving(false);
-  }, [selectedMemo, editTitle, editContent, editCategory, editTags]);
+  }, [selectedMemo, editTitle, editContent, editCategory, editTags, editOriginal]);
 
   // 메모 재분석 (AI로 일정/할일/거래 재추출)
   const reanalyzeMemo = useCallback(async () => {
@@ -351,6 +688,8 @@ function App() {
       }
       const model = await invoke<string>("get_setting", { key: "gemini_model" });
       if (model) setAiModel(model);
+      const copyMode = await invoke<string>("get_setting", { key: "attachment_copy_mode" });
+      if (copyMode) setAttachmentCopyMode(copyMode);
     } catch (e) { console.error(e); }
   };
 
@@ -396,6 +735,52 @@ function App() {
       }
     } catch (e) { console.error("toggleMinimized error:", e); }
   };
+
+  const toggleMaximize = async () => {
+    try {
+      const win = getCurrentWindow();
+      const maximized = await win.isMaximized();
+      if (maximized) {
+        await win.unmaximize();
+        setIsMaximized(false);
+      } else {
+        await win.maximize();
+        setIsMaximized(true);
+      }
+    } catch (e) { console.error("toggleMaximize error:", e); }
+  };
+
+  // 사이드바 리사이즈 핸들러
+  const handleSidebarMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = Math.max(150, Math.min(400, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
 
   const loadUsage = async () => {
     try { setUsage(await invoke<UsageStats>("get_usage")); } catch (e) { console.error(e); }
@@ -467,6 +852,103 @@ function App() {
     } catch (e) { setError(String(e)); }
   };
 
+  const deleteCategory = async (category: string) => {
+    if (!confirm(`"${category}" 카테고리를 삭제하시겠습니까?\n(해당 카테고리의 메모들은 카테고리가 비워집니다)`)) return;
+    try {
+      await invoke("delete_category", { category });
+      loadMemos();
+    } catch (e) { setError(String(e)); }
+  };
+
+  const renameCategory = async (oldName: string, newName: string) => {
+    if (!newName.trim()) return;
+    try {
+      await invoke("rename_category", { oldName, newName: newName.trim() });
+      loadMemos();
+      setRenamingCategory(null);
+      setNewCategoryName("");
+    } catch (e) { setError(String(e)); }
+  };
+
+  // 메모 클릭 처리 (Ctrl/Cmd, Shift 지원)
+  const handleMemoClick = (memo: Memo, e: React.MouseEvent) => {
+    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+    const isShift = e.shiftKey;
+
+    if (isCtrlOrCmd) {
+      // Ctrl/Cmd+클릭: 개별 선택 토글
+      setSelectedMemoIds(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(memo.id)) {
+          newSet.delete(memo.id);
+        } else {
+          newSet.add(memo.id);
+        }
+        return newSet;
+      });
+      setLastSelectedMemoId(memo.id);
+    } else if (isShift && lastSelectedMemoId !== null) {
+      // Shift+클릭: 범위 선택
+      const memoIds = filteredMemos.map(m => m.id);
+      const startIdx = memoIds.indexOf(lastSelectedMemoId);
+      const endIdx = memoIds.indexOf(memo.id);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const [from, to] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+        const rangeIds = memoIds.slice(from, to + 1);
+        setSelectedMemoIds(prev => {
+          const newSet = new Set(prev);
+          rangeIds.forEach(id => newSet.add(id));
+          return newSet;
+        });
+      }
+    } else {
+      // 일반 클릭: 단일 선택
+      setSelectedMemoIds(new Set());
+      setSelectedMemo(memo);
+      setLastSelectedMemoId(memo.id);
+    }
+  };
+
+  // 선택된 메모 모두 삭제
+  const deleteSelectedMemos = async () => {
+    if (selectedMemoIds.size === 0) return;
+    if (!confirm(`선택된 ${selectedMemoIds.size}개의 메모를 삭제하시겠습니까?`)) return;
+    try {
+      for (const id of selectedMemoIds) {
+        await invoke("delete_memo", { id });
+      }
+      setSelectedMemoIds(new Set());
+      loadMemos();
+    } catch (e) { setError(String(e)); }
+  };
+
+  // 선택된 메모 카테고리 이동
+  const moveSelectedMemos = async (newCategory: string) => {
+    if (selectedMemoIds.size === 0) return;
+    try {
+      for (const id of selectedMemoIds) {
+        const memo = memos.find(m => m.id === id);
+        if (memo) {
+          await invoke("update_memo", {
+            id,
+            title: memo.title,
+            formattedContent: memo.formatted_content,
+            category: newCategory,
+            tags: memo.tags,
+            content: null
+          });
+        }
+      }
+      setSelectedMemoIds(new Set());
+      loadMemos();
+    } catch (e) { setError(String(e)); }
+  };
+
+  // 선택 해제
+  const clearSelection = () => {
+    setSelectedMemoIds(new Set());
+  };
+
   const loadTodos = async () => {
     try {
       const list = await invoke<Todo[]>("get_todos");
@@ -490,13 +972,47 @@ function App() {
   };
 
   const handleInput = async () => {
-    if (!inputText.trim()) return;
+    console.log("저장 시작!", { inputText, pendingFilesCount: pendingFiles.length, pendingFiles });
+    if (!inputText.trim() && pendingFiles.length === 0) return;
     const savedText = inputText;
+    const filesToAttach = [...pendingFiles];
     setLoading(true); setError(null); setResult(null);
     try {
-      const res = await invoke<InputResult>("input_memo", { content: savedText });
+      console.log("Calling input_memo with:", { content: savedText || "첨부파일" });
+      const res = await invoke<InputResult>("input_memo", { content: savedText || "첨부파일" });
+      console.log("input_memo result:", res);
       setResult(res.message);
-      // 저장 후 내용 유지 - 새로 작성 버튼 눌러야 초기화
+
+      // 대기 중인 파일들 첨부
+      console.log("Checking attachment condition:", { filesToAttachLength: filesToAttach.length, memoId: res.memo_id });
+      if (filesToAttach.length > 0 && res.memo_id) {
+        let attachedCount = 0;
+        const errors: string[] = [];
+
+        // 디버깅: 어떤 파일들이 첨부 대기중인지 표시
+        console.log("Files to attach:", filesToAttach);
+
+        for (const filePath of filesToAttach) {
+          try {
+            console.log("Calling add_attachment with:", { memoId: res.memo_id, filePath });
+            await invoke("add_attachment", { memoId: res.memo_id, filePath });
+            attachedCount++;
+            console.log("Successfully attached:", filePath);
+          } catch (e) {
+            console.error("Failed to attach file:", filePath, e);
+            errors.push(`${filePath.split('/').pop()}: ${e}`);
+          }
+        }
+        setPendingFiles([]);
+        if (errors.length > 0) {
+          setError(`첨부 실패: ${errors.join(', ')}`);
+        } else if (attachedCount > 0) {
+          setResult(`${res.message} (첨부파일 ${attachedCount}개 저장됨)`);
+        }
+      }
+
+      // 저장 후 입력 내용 초기화
+      setInputText("");
       loadUsage(); loadMemos(); loadSchedules(); loadTodos(); loadTransactions();
     } catch (e) {
       setError(String(e));
@@ -506,10 +1022,15 @@ function App() {
 
   const handleSearch = async () => {
     if (!searchText.trim()) return;
-    setLoading(true); setError(null); setResult(null);
+    setLoading(true); setError(null); setResult(null); setSearchedAttachments([]);
     try {
-      const res = await invoke<SearchResult>("search_memo", { question: searchText });
+      // AI 검색과 첨부 파일 검색 동시 실행
+      const [res, attachmentResults] = await Promise.all([
+        invoke<SearchResult>("search_memo", { question: searchText }),
+        invoke<Attachment[]>("search_attachments", { query: searchText })
+      ]);
       setResult(res.answer);
+      setSearchedAttachments(attachmentResults);
       loadUsage();
     } catch (e) { setError(String(e)); }
     finally { setLoading(false); }
@@ -600,7 +1121,16 @@ function App() {
     return root;
   };
 
-  const categoryTree = buildCategoryTree(memos);
+  // 필터링된 메모 목록
+  const filteredMemos = memoFilter.trim()
+    ? memos.filter(m =>
+        m.title.toLowerCase().includes(memoFilter.toLowerCase()) ||
+        m.content.toLowerCase().includes(memoFilter.toLowerCase()) ||
+        m.formatted_content.toLowerCase().includes(memoFilter.toLowerCase())
+      )
+    : memos;
+
+  const categoryTree = buildCategoryTree(filteredMemos);
   const allCategories = [...new Set(memos.map((m) => m.category || "etc"))];
 
   // 카테고리 노드 렌더링 (재귀)
@@ -622,19 +1152,58 @@ function App() {
           onDrop={(e) => handleDrop(e, child.path)}
           onDragLeave={() => setDragOverCategory(null)}
         >
-          <button
-            onClick={() => {
-              const newSet = new Set(expandedCategories);
-              newSet.has(child.path) ? newSet.delete(child.path) : newSet.add(child.path);
-              setExpandedCategories(newSet);
-            }}
-            className="category w-full flex items-center gap-1 cursor-pointer mb-1"
-            style={{ fontSize: `${Math.max(10, 11 - depth)}px` }}
-          >
-            <span>{isExpanded ? '[-]' : '[+]'}</span>
-            <span className="flex-1 text-left">{child.name}</span>
-            <span className="tag">{totalMemos}</span>
-          </button>
+          <div className="flex items-center gap-1 mb-1 group">
+            {renamingCategory === child.path ? (
+              <div className="flex-1 flex items-center gap-1">
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') renameCategory(child.path, newCategoryName);
+                    if (e.key === 'Escape') { setRenamingCategory(null); setNewCategoryName(""); }
+                  }}
+                  className="input flex-1"
+                  style={{ fontSize: '10px', padding: '2px 4px' }}
+                  autoFocus
+                />
+                <button onClick={() => renameCategory(child.path, newCategoryName)} style={{ fontSize: '10px' }}>✓</button>
+                <button onClick={() => { setRenamingCategory(null); setNewCategoryName(""); }} style={{ fontSize: '10px' }}>✕</button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    const newSet = new Set(expandedCategories);
+                    newSet.has(child.path) ? newSet.delete(child.path) : newSet.add(child.path);
+                    setExpandedCategories(newSet);
+                  }}
+                  className="category flex-1 flex items-center gap-1 cursor-pointer"
+                  style={{ fontSize: `${Math.max(10, 11 - depth)}px` }}
+                >
+                  <span>{isExpanded ? '[-]' : '[+]'}</span>
+                  <span className="flex-1 text-left">{child.name === 'etc' ? '미분류' : child.name}</span>
+                  <span className="tag">{totalMemos}</span>
+                </button>
+                {child.path !== 'etc' && (
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setRenamingCategory(child.path); setNewCategoryName(child.name); }}
+                      className="opacity-0 group-hover:opacity-100 hover:text-blue-500 px-1"
+                      style={{ fontSize: '10px' }}
+                      title="카테고리 이름 변경"
+                    >✎</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteCategory(child.path); }}
+                      className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 px-1"
+                      style={{ fontSize: '10px' }}
+                      title="카테고리 삭제"
+                    >✕</button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
 
           {isExpanded && (
             <>
@@ -647,15 +1216,15 @@ function App() {
                   {child.memos.map((memo) => (
                     <button
                       key={memo.id}
-                      onClick={() => setSelectedMemo(memo)}
+                      onClick={(e) => handleMemoClick(memo, e)}
                       draggable
                       onDragStart={() => setDraggedMemo(memo)}
                       onDragEnd={() => { setDraggedMemo(null); setDragOverCategory(null); }}
                       className={`w-full text-left px-2 py-1 text-xs cursor-pointer ${draggedMemo?.id === memo.id ? 'opacity-50' : ''}`}
                       style={{
-                        border: `1px solid ${selectedMemo?.id === memo.id ? 'var(--accent)' : 'var(--border)'}`,
-                        background: selectedMemo?.id === memo.id ? 'var(--accent)' : 'var(--bg)',
-                        color: selectedMemo?.id === memo.id ? '#ffffff' : 'var(--text)'
+                        border: `1px solid ${selectedMemoIds.has(memo.id) || selectedMemo?.id === memo.id ? 'var(--accent)' : 'var(--border)'}`,
+                        background: selectedMemoIds.has(memo.id) ? 'var(--accent-light)' : selectedMemo?.id === memo.id ? 'var(--accent)' : 'var(--bg)',
+                        color: selectedMemo?.id === memo.id && selectedMemoIds.size === 0 ? 'var(--accent-text)' : 'var(--text)'
                       }}
                     >
                       <div className="font-bold truncate uppercase">{memo.title}</div>
@@ -695,6 +1264,104 @@ function App() {
     });
   };
 
+  // 스플래시 화면
+  if (showSplash) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+          zIndex: 9999,
+          opacity: splashFading ? 0 : 1,
+          transition: 'opacity 0.5s ease-out'
+        }}
+      >
+        {/* 로고 애니메이션 */}
+        <img
+          src="/logo.png"
+          alt="JolaJoa Memo"
+          style={{
+            width: '120px',
+            height: '120px',
+            marginBottom: '24px',
+            animation: 'logoAnim 1.2s ease-out',
+            filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.4))',
+          }}
+        />
+        <h1
+          style={{
+            fontSize: '24px',
+            fontWeight: 700,
+            color: '#ffffff',
+            letterSpacing: '3px',
+            marginBottom: '8px',
+            animation: 'fadeInUp 0.8s ease-out 0.4s both',
+          }}
+        >
+          JOLAJOA MEMO
+        </h1>
+        <p
+          style={{
+            fontSize: '13px',
+            color: 'rgba(255,255,255,0.7)',
+            animation: 'fadeInUp 0.8s ease-out 0.6s both',
+          }}
+        >
+          {appVersion ? `v${appVersion}` : '로딩중...'}
+        </p>
+        {updating && (
+          <div
+            style={{
+              marginTop: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#4ade80',
+              fontSize: '13px',
+              animation: 'fadeInUp 0.8s ease-out 0.8s both',
+            }}
+          >
+            <span className="loading-spinner" style={{ width: '16px', height: '16px' }} />
+            업데이트 중...
+          </div>
+        )}
+        <style>{`
+          @keyframes logoAnim {
+            0% {
+              opacity: 0;
+              transform: scale(0.3) translateY(40px);
+            }
+            50% {
+              opacity: 1;
+              transform: scale(1.1) translateY(-10px);
+            }
+            100% {
+              transform: scale(1) translateY(0);
+            }
+          }
+          @keyframes fadeInUp {
+            from {
+              opacity: 0;
+              transform: translateY(20px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
       {/* ===== TOP NAV BAR - macOS Native Style ===== */}
@@ -725,8 +1392,8 @@ function App() {
           {/* 그룹 1: 메모, 검색 */}
           <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', marginRight: '12px', border: '1px solid var(--border-light)' }}>
             {[
-              { id: "input" as Tab, label: "메모" },
-              { id: "search" as Tab, label: "검색" },
+              { id: "input" as Tab, label: "AI 메모" },
+              { id: "search" as Tab, label: "AI 검색" },
             ].map((item) => (
               <button
                 key={item.id}
@@ -805,13 +1472,30 @@ function App() {
               </button>
             </>
           )}
+          {!minimized && (
+            <button
+              onClick={toggleMaximize}
+              className="btn"
+              style={{
+                padding: '4px 8px',
+                background: isMaximized ? 'var(--accent)' : 'transparent',
+                color: isMaximized ? 'var(--accent-text)' : 'var(--text)',
+                fontWeight: 500,
+                fontSize: '12px',
+                borderRadius: '4px'
+              }}
+              title={isMaximized ? "창 복원" : "전체 화면"}
+            >
+              {isMaximized ? '⊡' : '⬜'}
+            </button>
+          )}
           <button
             onClick={toggleMinimized}
             className="btn"
             style={{
               padding: minimized ? '4px 12px' : '4px 8px',
               background: minimized ? 'var(--accent)' : 'transparent',
-              color: minimized ? '#fff' : 'var(--text)',
+              color: minimized ? 'var(--accent-text)' : 'var(--text)',
               fontWeight: 500,
               fontSize: '12px',
               borderRadius: '4px'
@@ -825,33 +1509,33 @@ function App() {
 
       {/* ===== UPDATE BANNER ===== */}
       {!minimized && updateAvailable && (
-        <div style={{ background: 'var(--accent)', color: '#ffffff' }}>
-          <div className="flex items-center justify-between px-6 py-3">
-            <span className="font-bold uppercase">
-              NEW VERSION {updateAvailable.version} AVAILABLE
+        <div style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+          <div className="flex items-center justify-center gap-4 px-6 py-2">
+            <span style={{ fontSize: '12px', color: 'var(--text)' }}>
+              새 버전 {updateAvailable.version} 사용 가능
             </span>
             <div className="flex gap-2">
               <button
                 onClick={() => setUpdateAvailable(prev => prev ? { ...prev, showDetails: !prev.showDetails } : null)}
-                className="px-4 py-2 font-bold uppercase"
-                style={{ background: 'transparent', color: '#ffffff', border: '2px solid #ffffff' }}
+                className="px-2 py-1 font-medium"
+                style={{ background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: '10px' }}
               >
-                {updateAvailable.showDetails ? 'HIDE' : "WHAT'S NEW"}
+                {updateAvailable.showDetails ? '숨기기' : '변경사항'}
               </button>
               <button
                 onClick={installUpdate}
                 disabled={updating}
-                className="px-4 py-2 font-bold uppercase"
-                style={{ background: 'var(--bg)', color: 'var(--accent)', border: 'none' }}
+                className="px-2 py-1 font-medium"
+                style={{ background: 'var(--text)', color: 'var(--bg)', border: 'none', fontSize: '10px' }}
               >
-                {updating ? 'UPDATING...' : 'UPDATE NOW'}
+                {updating ? '업데이트 중...' : '업데이트'}
               </button>
             </div>
           </div>
           {updateAvailable.showDetails && updateAvailable.body && (
-            <div className="px-6 pb-4">
-              <div className="p-4 text-sm" style={{ background: 'rgba(0,0,0,0.2)', maxHeight: '200px', overflowY: 'auto' }}>
-                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{updateAvailable.body}</pre>
+            <div className="px-6 pb-3">
+              <div className="p-3 text-sm" style={{ background: 'var(--bg)', maxHeight: '150px', overflowY: 'auto', color: 'var(--text-secondary)', borderRadius: '4px' }}>
+                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '11px' }}>{updateAvailable.body}</pre>
               </div>
             </div>
           )}
@@ -862,7 +1546,7 @@ function App() {
       {!minimized && <div className="flex-1 flex overflow-hidden">
         {/* ===== LEFT SIDEBAR ===== */}
         {sidebarOpen && (
-        <div className="w-52 flex flex-col overflow-hidden" style={{ borderRight: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
+        <div className="flex flex-col overflow-hidden" style={{ width: `${sidebarWidth}px`, minWidth: '150px', maxWidth: '400px', background: 'var(--bg-secondary)' }}>
           <div className="px-3 py-2 flex justify-between items-center">
             <span className="section-label">메모 ({memos.length}/{totalMemoCount})</span>
             <button
@@ -879,6 +1563,52 @@ function App() {
               {expandedCategories.size > 0 ? '접기' : '펼치기'}
             </button>
           </div>
+
+          {/* 실시간 검색 필터 */}
+          <div className="px-2 pb-2">
+            <input
+              type="text"
+              value={memoFilter}
+              onChange={(e) => setMemoFilter(e.target.value)}
+              placeholder="🔍 제목/내용 검색..."
+              className="input w-full"
+              style={{ padding: '4px 8px', fontSize: '11px' }}
+            />
+          </div>
+
+          {/* 다중 선택 시 액션 바 */}
+          {selectedMemoIds.size > 0 && (
+            <div className="px-2 pb-2 flex items-center gap-2 flex-wrap" style={{ background: 'var(--bg-secondary)', borderRadius: '4px', margin: '0 8px 8px', padding: '6px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 'bold' }}>{selectedMemoIds.size}개 선택</span>
+              <button
+                onClick={clearSelection}
+                className="btn"
+                style={{ fontSize: '10px', padding: '2px 6px' }}
+              >
+                선택 해제
+              </button>
+              <button
+                onClick={deleteSelectedMemos}
+                className="btn"
+                style={{ fontSize: '10px', padding: '2px 6px', color: 'var(--error)' }}
+              >
+                삭제
+              </button>
+              <select
+                onChange={(e) => { if (e.target.value) moveSelectedMemos(e.target.value); e.target.value = ''; }}
+                className="input"
+                style={{ fontSize: '10px', padding: '2px 4px' }}
+                defaultValue=""
+              >
+                <option value="">카테고리 이동...</option>
+                {allCategories.filter(c => c !== 'etc').map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+                <option value="">미분류로</option>
+              </select>
+              <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Ctrl+클릭: 개별선택 | Shift+클릭: 범위선택</span>
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto px-2" ref={memoListRef}>
             {Object.keys(categoryTree.children).length === 0 ? (
@@ -897,9 +1627,7 @@ function App() {
                         더 보기
                       </button>
                     )
-                  ) : memos.length > 0 && (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>끝</span>
-                  )}
+                  ) : null}
                 </div>
               </>
             )}
@@ -916,14 +1644,31 @@ function App() {
         </div>
         )}
 
+        {/* ===== SIDEBAR RESIZE HANDLE ===== */}
+        {sidebarOpen && (
+          <div
+            onMouseDown={handleSidebarMouseDown}
+            style={{
+              width: '4px',
+              cursor: 'col-resize',
+              background: isResizing ? 'var(--accent)' : 'var(--border-light)',
+              transition: 'background 0.15s',
+              flexShrink: 0
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent)')}
+            onMouseLeave={(e) => !isResizing && (e.currentTarget.style.background = 'var(--border-light)')}
+          />
+        )}
+
         {/* ===== MAIN CONTENT ===== */}
         <div className="flex-1 overflow-auto p-4 flex flex-col" style={{ background: 'var(--bg)' }}>
           {/* ===== HOME DASHBOARD + MEMO INPUT ===== */}
           {tab === "input" && !selectedMemo && (() => {
-            // 오늘/내일 일정
+            // 오늘/내일 일정 (로컬 시간 사용)
             const now = new Date();
-            const today = now.toISOString().split('T')[0];
-            const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            const tomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
             const upcomingSchedules = schedules.filter(s => {
               const date = s.start_time?.split('T')[0];
               return date && date >= today;
@@ -1027,7 +1772,17 @@ function App() {
                 </div>
 
                 {/* ===== MEMO INPUT ===== */}
-                <div className="card flex-1 flex flex-col" style={{ padding: '8px' }}>
+                <div
+                  className="card flex-1 flex flex-col"
+                  style={{
+                    padding: '8px',
+                    border: isDraggingFile ? '2px dashed var(--accent)' : undefined,
+                    background: isDraggingFile ? 'rgba(59, 130, 246, 0.05)' : undefined
+                  }}
+                  onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+                  onDragLeave={() => setIsDraggingFile(false)}
+                  onDrop={handleInputFileDrop}
+                >
                   <div className="card-header flex justify-between items-center" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
                     <span>
                       {t("input.title")}
@@ -1035,9 +1790,9 @@ function App() {
                       {!loading && result && <span style={{ marginLeft: '8px', color: 'var(--success)' }}>✓ {result}</span>}
                     </span>
                     <div className="flex gap-2">
-                      {inputText.trim() && (
+                      {(inputText.trim() || pendingFiles.length > 0) && (
                         <button
-                          onClick={() => { setInputText(""); setResult(null); setError(null); }}
+                          onClick={() => { setInputText(""); setPendingFiles([]); setResult(null); setError(null); }}
                           disabled={loading}
                           className="btn"
                           style={{ padding: '4px 10px', fontSize: '11px' }}
@@ -1047,11 +1802,11 @@ function App() {
                       )}
                       <button
                         onClick={handleInput}
-                        disabled={loading || !inputText.trim()}
+                        disabled={loading || (!inputText.trim() && pendingFiles.length === 0)}
                         className="btn btn-primary"
                         style={{ padding: '4px 12px', fontSize: '11px' }}
                       >
-                        {loading ? '저장중...' : '저장'}
+                        {loading ? 'AI 저장중...' : 'AI 저장'}
                       </button>
                     </div>
                   </div>
@@ -1059,19 +1814,76 @@ function App() {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => {
-                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && inputText.trim() && !loading) {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && (inputText.trim() || pendingFiles.length > 0) && !loading) {
                         handleInput();
                       }
                     }}
-                    placeholder={t("input.placeholder")}
+                    placeholder={isDraggingFile ? '여기에 파일을 놓으세요!' : t("input.placeholder")}
                     className="input resize-none flex-1"
                     style={{ fontSize: '12px' }}
                     disabled={loading}
                   />
+
+                  {/* 대기 중인 파일 목록 */}
+                  {pendingFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {pendingFiles.map((filePath, idx) => {
+                        const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-1 px-2 py-1"
+                            style={{ background: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '10px' }}
+                          >
+                            <span>📎 {fileName}</span>
+                            <button
+                              onClick={() => removePendingFile(filePath)}
+                              style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px' }}
+                            >✕</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between" style={{ marginTop: '4px' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                      ⌘/Ctrl+Enter로 저장
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                        ⌘/Ctrl+Enter로 저장
+                      </span>
+                      <button
+                        onClick={async () => {
+                          try {
+                            console.log("Opening file dialog...");
+                            const selected = await open({
+                              multiple: true,
+                              title: "첨부할 파일 선택"
+                            });
+                            console.log("Dialog result:", selected);
+                            if (selected) {
+                              const paths = Array.isArray(selected) ? selected : [selected];
+                              console.log("Paths to add:", paths);
+                              setPendingFiles(prev => {
+                                const newFiles = paths.filter(path => {
+                                  if (!path) return false;
+                                  const fileName = path.split('/').pop() || path;
+                                  return !prev.some(p => p.endsWith(fileName));
+                                });
+                                console.log("New pending files:", [...prev, ...newFiles]);
+                                return [...prev, ...newFiles.filter(Boolean) as string[]];
+                              });
+                            }
+                          } catch (e) {
+                            console.error("File dialog error:", e);
+                            setError(`파일 선택 오류: ${e}`);
+                          }
+                        }}
+                        className="btn"
+                        style={{ fontSize: '10px', padding: '2px 6px' }}
+                      >
+                        📁 파일 선택
+                      </button>
+                    </div>
                     {error && <span style={{ fontSize: '10px', color: 'var(--error)' }}>{error}</span>}
                   </div>
                 </div>
@@ -1097,13 +1909,103 @@ function App() {
                   />
                   <button onClick={handleSearch} disabled={loading || !searchText.trim()} className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '11px' }}>
                     {loading && <span className="loading-spinner mr-1" style={{ width: '10px', height: '10px' }} />}
-                    GO
+                    AI 검색
                   </button>
                 </div>
                 {result && (
                   <div className="code-block mt-2" style={{ padding: '8px', fontSize: '12px' }}>
                     <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>AI_RESPONSE</div>
                     <div>{renderMarkdown(result)}</div>
+                  </div>
+                )}
+                {/* 첨부 파일 검색 결과 */}
+                {searchedAttachments.length > 0 && (
+                  <div className="code-block mt-2" style={{ padding: '8px', fontSize: '12px' }}>
+                    <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
+                      첨부 파일 ({searchedAttachments.length}개)
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {searchedAttachments.map((att) => {
+                        const relatedMemo = memos.find(m => m.id === att.memo_id);
+                        return (
+                          <div
+                            key={att.id}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px',
+                              padding: '6px 8px',
+                              background: 'var(--bg-secondary)',
+                              borderRadius: '4px',
+                              fontSize: '11px'
+                            }}
+                          >
+                            {/* 첨부 파일 정보 */}
+                            <div
+                              onClick={async () => {
+                                try {
+                                  await invoke("open_attachment", { id: att.id });
+                                } catch (e) {
+                                  setError(String(e));
+                                }
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                cursor: 'pointer'
+                              }}
+                              className="hover-highlight"
+                            >
+                              <span style={{ fontSize: '14px' }}>📎</span>
+                              <div style={{ flex: 1, overflow: 'hidden' }}>
+                                <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {att.file_name}
+                                </div>
+                                <div style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>
+                                  {(att.file_size / 1024).toFixed(1)} KB
+                                </div>
+                              </div>
+                              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>파일 열기</span>
+                            </div>
+                            {/* 연관 메모 */}
+                            {relatedMemo && (
+                              <div
+                                onClick={() => {
+                                  setSelectedMemo(relatedMemo);
+                                  setEditTitle(relatedMemo.title);
+                                  setEditContent(relatedMemo.formatted_content);
+                                  setEditCategory(relatedMemo.category);
+                                  setEditTags(relatedMemo.tags);
+                                  setEditOriginal(relatedMemo.content);
+                                  setMemoViewTab("formatted");
+                                  setIsEditing(false);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '4px 6px',
+                                  marginLeft: '22px',
+                                  background: 'var(--bg-tertiary)',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '10px',
+                                  color: 'var(--text-secondary)'
+                                }}
+                                className="hover-highlight"
+                              >
+                                <span>📝</span>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {relatedMemo.title}
+                                </span>
+                                <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>메모 보기</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 {error && <p className="status status-error mt-2" style={{ fontSize: '10px' }}>{error}</p>}
@@ -1126,10 +2028,11 @@ function App() {
               ) : (
                 <div>
                   {schedules.map((schedule) => {
-                    // 오늘/내일 체크
+                    // 오늘/내일 체크 (로컬 시간 사용)
                     const now = new Date();
-                    const today = now.toISOString().split('T')[0];
-                    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+                    const tomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
                     const scheduleDate = schedule.start_time?.split('T')[0];
                     const isToday = scheduleDate === today;
                     const isTomorrow = scheduleDate === tomorrow;
@@ -1471,7 +2374,7 @@ function App() {
                                         fontSize: '14px'
                                       }}
                                     >
-                                      {tx.tx_type === 'income' ? '↓' : '↑'}
+                                      {tx.tx_type === 'income' ? '↑' : '↓'}
                                     </div>
 
                                     {/* 내용 */}
@@ -1616,6 +2519,32 @@ function App() {
                 </div>
               </div>
 
+              {/* 첨부파일 설정 */}
+              <div className="card" style={{ padding: '8px' }}>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>첨부파일 설정</div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span style={{ fontSize: '11px' }}>파일 저장 방식</span>
+                    <select
+                      id="attachmentCopyMode"
+                      className="input"
+                      style={{ padding: '4px 6px', fontSize: '11px', width: '120px' }}
+                      value={attachmentCopyMode}
+                      onChange={async (e) => {
+                        setAttachmentCopyMode(e.target.value);
+                        await invoke("save_setting", { key: "attachment_copy_mode", value: e.target.value });
+                      }}
+                    >
+                      <option value="link">링크만 저장</option>
+                      <option value="copy">파일 복사</option>
+                    </select>
+                  </div>
+                  <p style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                    링크: 원본 위치 참조 (용량 절약) | 복사: 앱 폴더에 복사 (안전)
+                  </p>
+                </div>
+              </div>
+
               <button onClick={handleSaveSettings} className="btn btn-primary w-full" style={{ padding: '6px 12px', fontSize: '11px' }}>SAVE_SETTINGS</button>
 
               <div className="flex gap-2">
@@ -1654,11 +2583,6 @@ function App() {
               {(result || error) && (
                 <p className={`status ${error ? 'status-error' : 'status-success'}`} style={{ fontSize: '10px' }}>{error || result}</p>
               )}
-
-              {/* 버전 정보 */}
-              <div style={{ textAlign: 'center', paddingTop: '16px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                졸라좋아 메모 {appVersion && `v${appVersion}`}
-              </div>
             </div>
           )}
 
@@ -1668,14 +2592,25 @@ function App() {
               {/* 헤더: 닫기 & 삭제 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="tag" style={{ background: 'var(--accent)', color: '#ffffff', fontSize: '10px', padding: '2px 6px' }}>{editCategory}</span>
-                  {saving && <span className="status status-warning" style={{ fontSize: '10px' }}>SAVING...</span>}
+                  <span className="tag" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontSize: '10px', padding: '2px 6px', border: '1px solid var(--border)' }}>{editCategory}</span>
+                  {saving && <span className="status status-warning" style={{ fontSize: '10px' }}>저장 중...</span>}
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={autoSave} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '10px' }}>{saving ? '...' : 'SAVE'}</button>
-                  <button onClick={reanalyzeMemo} className="btn" style={{ padding: '4px 8px', fontSize: '10px', background: 'var(--accent)', color: '#fff' }} disabled={reanalyzing}>{reanalyzing ? '...' : 'AI'}</button>
-                  <button onClick={deleteMemo} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '10px' }}>DEL</button>
-                  <button onClick={() => setSelectedMemo(null)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '10px' }}>X</button>
+                  <button
+                    onClick={() => {
+                      const content = memoViewTab === "original" ? editOriginal : editContent;
+                      navigator.clipboard.writeText(content);
+                      showToast("📋 클립보드에 복사되었습니다");
+                    }}
+                    className="btn"
+                    style={{ padding: '4px 8px', fontSize: '10px' }}
+                  >
+                    복사
+                  </button>
+                  <button onClick={autoSave} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '10px' }}>{saving ? '...' : '저장'}</button>
+                  <button onClick={reanalyzeMemo} className="btn" style={{ padding: '4px 8px', fontSize: '10px' }} disabled={reanalyzing}>{reanalyzing ? '...' : '학습'}</button>
+                  <button onClick={deleteMemo} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '10px' }}>삭제</button>
+                  <button onClick={() => setSelectedMemo(null)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '10px' }}>닫기</button>
                 </div>
               </div>
 
@@ -1706,19 +2641,151 @@ function App() {
                 </div>
               </div>
 
-              {/* 내용 (인라인 편집) */}
-              <div className="card" style={{ padding: '8px' }}>
-                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>CONTENT</div>
-                <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="input h-40 resize-none" placeholder="Write your memo here..." style={{ fontSize: '12px' }} />
+              {/* 탭 버튼 */}
+              <div className="flex gap-1 items-center" style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '8px', marginBottom: '8px' }}>
+                {[
+                  { id: "formatted" as const, label: "📝 정리본" },
+                  { id: "original" as const, label: "📄 원본" },
+                  { id: "attachments" as const, label: `📎 첨부 (${attachments.length})` }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => { setMemoViewTab(t.id); setIsEditing(false); }}
+                    className="btn"
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      background: memoViewTab === t.id ? 'var(--accent)' : 'var(--bg-secondary)',
+                      color: memoViewTab === t.id ? 'var(--accent-text)' : 'var(--text)'
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+                <div className="flex-1" />
+                {(memoViewTab === "formatted" || memoViewTab === "original") && (
+                  <button
+                    onClick={() => setIsEditing(!isEditing)}
+                    className="btn"
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      background: isEditing ? 'var(--warning)' : 'var(--bg-secondary)',
+                      color: isEditing ? 'var(--accent-text)' : 'var(--text)'
+                    }}
+                  >
+                    {isEditing ? '✓ 완료' : '✏️ 편집'}
+                  </button>
+                )}
               </div>
 
-              {/* 미리보기 */}
-              {editContent && (
-                <div className="card" style={{ padding: '8px' }}>
-                  <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>PREVIEW</div>
-                  <div style={{ fontSize: '12px' }}>{renderMarkdown(editContent)}</div>
-                </div>
-              )}
+              {/* 탭 콘텐츠 */}
+              <div className="card flex-1" style={{ padding: '12px' }}>
+                {/* 정리본 탭 */}
+                {memoViewTab === "formatted" && (
+                  isEditing ? (
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      className="input w-full resize-none"
+                      placeholder="정리본을 편집하세요..."
+                      style={{ fontSize: '12px', minHeight: '300px', lineHeight: '1.6' }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '13px', lineHeight: '1.6' }}>{renderMarkdown(editContent)}</div>
+                  )
+                )}
+
+                {/* 원본 탭 */}
+                {memoViewTab === "original" && selectedMemo && (
+                  isEditing ? (
+                    <textarea
+                      value={editOriginal}
+                      onChange={(e) => setEditOriginal(e.target.value)}
+                      className="input w-full resize-none"
+                      placeholder="원본을 편집하세요..."
+                      style={{ fontSize: '12px', minHeight: '300px', lineHeight: '1.5' }}
+                    />
+                  ) : (
+                    <pre style={{ fontSize: '12px', whiteSpace: 'pre-wrap', color: 'var(--text)', fontFamily: 'inherit', lineHeight: '1.5' }}>{editOriginal}</pre>
+                  )
+                )}
+
+                {/* 첨부파일 탭 */}
+                {memoViewTab === "attachments" && (
+                  <div>
+                    {/* 드래그앤드롭 영역 */}
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+                      onDragLeave={() => setIsDraggingFile(false)}
+                      onDrop={handleFileDrop}
+                      style={{
+                        border: `2px dashed ${isDraggingFile ? 'var(--accent)' : 'var(--border)'}`,
+                        borderRadius: '6px',
+                        padding: '20px',
+                        textAlign: 'center',
+                        marginBottom: '12px',
+                        background: isDraggingFile ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <p style={{ fontSize: '13px', color: isDraggingFile ? 'var(--accent)' : 'var(--text-muted)' }}>
+                        {isDraggingFile ? '여기에 놓으세요' : '📂 파일을 드래그하여 첨부'}
+                      </p>
+                    </div>
+
+                    {/* 첨부파일 목록 */}
+                    {attachments.length === 0 ? (
+                      <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', padding: '20px' }}>
+                        첨부된 파일이 없습니다
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {attachments.map((att) => (
+                          <div
+                            key={att.id}
+                            className="flex items-center gap-2 p-3"
+                            style={{
+                              background: 'var(--bg-secondary)',
+                              borderRadius: '6px',
+                              fontSize: '12px'
+                            }}
+                          >
+                            <span style={{ fontSize: '20px' }}>
+                              {att.file_name.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i) ? '🖼️' :
+                               att.file_name.match(/\.(pdf)$/i) ? '📄' :
+                               att.file_name.match(/\.(doc|docx)$/i) ? '📝' :
+                               att.file_name.match(/\.(xls|xlsx)$/i) ? '📊' :
+                               att.file_name.match(/\.(zip|rar|7z)$/i) ? '📦' :
+                               att.file_name.match(/\.(mp3|wav|m4a)$/i) ? '🎵' :
+                               att.file_name.match(/\.(mp4|mov|avi)$/i) ? '🎬' : '📎'}
+                            </span>
+                            <div className="flex-1">
+                              <button
+                                onClick={() => openAttachment(att.file_path)}
+                                className="hover:underline"
+                                style={{ color: 'var(--text)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                              >
+                                {att.file_name}
+                              </button>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                {formatFileSize(att.file_size)} {att.is_copy && '• 복사됨'}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => removeAttachment(att.id)}
+                              className="btn btn-danger"
+                              style={{ padding: '4px 8px', fontSize: '10px' }}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* 메타 정보 */}
               <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
@@ -1728,6 +2795,60 @@ function App() {
           )}
         </div>
       </div>}
+
+      {/* ===== FOOTER ===== */}
+      {!minimized && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '8px 16px',
+          borderTop: '1px solid var(--border-light)',
+          background: 'var(--bg-secondary)'
+        }}>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+            JolaJoa Memo {appVersion && `v${appVersion}`}
+          </span>
+          <a
+            href="https://github.com/johunsang/jolajoamemo/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: '10px',
+              color: 'var(--text-muted)',
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            💬 피드백
+          </a>
+        </div>
+      )}
+
+      {/* 토스트 알림 */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--text)',
+            color: 'var(--bg)',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: 500,
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            zIndex: 9999,
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

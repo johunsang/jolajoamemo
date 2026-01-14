@@ -8,6 +8,13 @@
     "opener:default",
     "core:window:allow-set-size",
     "core:window:allow-inner-size",
-    "core:window:allow-scale-factor"
+    "core:window:allow-scale-factor",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-set-always-on-top",
+    "dialog:default",
+    "updater:default",
+    "process:default"
   ]
 }

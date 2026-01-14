@@ -73,6 +73,18 @@ pub struct Transaction {
     pub created_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Attachment {
+    pub id: i64,
+    pub memo_id: i64,
+    pub file_name: String,
+    pub file_path: String,       // 저장된 경로 (복사 모드) 또는 원본 경로 (링크 모드)
+    pub original_path: String,   // 원본 파일 경로
+    pub is_copy: bool,           // 파일 복사 여부
+    pub file_size: i64,
+    pub created_at: String,
+}
+
 pub fn init_db(app_dir: PathBuf) -> Result<()> {
     let db_path = app_dir.join("jolajoamemo.db");
     std::fs::create_dir_all(&app_dir).ok();
@@ -155,8 +167,25 @@ pub fn init_db(app_dir: PathBuf) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(tx_type);
         CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(tx_date);
 
+        CREATE TABLE IF NOT EXISTS attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memo_id INTEGER NOT NULL,
+            file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            original_path TEXT NOT NULL,
+            is_copy INTEGER DEFAULT 0,
+            file_size INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (memo_id) REFERENCES memos(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_attachments_memo ON attachments(memo_id);
+        CREATE INDEX IF NOT EXISTS idx_attachments_name ON attachments(file_name);
+
         INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'ko');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('gemini_api_key', '');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('attachment_copy_mode', 'link');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('attachment_storage_path', '');
     "#)?;
 
     DB.set(Mutex::new(conn)).ok();
@@ -301,12 +330,19 @@ pub fn delete_all_memos() -> Result<usize> {
 }
 
 // 메모 전체 업데이트 (편집용)
-pub fn update_memo_full(id: i64, title: &str, formatted_content: &str, category: &str, tags: &str) -> Result<()> {
+pub fn update_memo_full(id: i64, title: &str, formatted_content: &str, category: &str, tags: &str, content: Option<&str>) -> Result<()> {
     let conn = get_db().lock();
-    conn.execute(
-        "UPDATE memos SET title = ?1, formatted_content = ?2, category = ?3, tags = ?4, updated_at = datetime('now') WHERE id = ?5",
-        params![title, formatted_content, category, tags, id],
-    )?;
+    if let Some(original) = content {
+        conn.execute(
+            "UPDATE memos SET title = ?1, formatted_content = ?2, category = ?3, tags = ?4, content = ?5, updated_at = datetime('now') WHERE id = ?6",
+            params![title, formatted_content, category, tags, original, id],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE memos SET title = ?1, formatted_content = ?2, category = ?3, tags = ?4, updated_at = datetime('now') WHERE id = ?5",
+            params![title, formatted_content, category, tags, id],
+        )?;
+    }
     Ok(())
 }
 
@@ -513,6 +549,26 @@ pub fn get_all_categories() -> Result<Vec<String>> {
     Ok(categories)
 }
 
+// 카테고리 삭제 (해당 카테고리 메모들의 카테고리를 비움)
+pub fn delete_category(category: &str) -> Result<usize> {
+    let conn = get_db().lock();
+    let count = conn.execute(
+        "UPDATE memos SET category = '' WHERE category = ?1",
+        params![category],
+    )?;
+    Ok(count)
+}
+
+// 카테고리 이름 변경
+pub fn rename_category(old_name: &str, new_name: &str) -> Result<usize> {
+    let conn = get_db().lock();
+    let count = conn.execute(
+        "UPDATE memos SET category = ?1 WHERE category = ?2",
+        params![new_name, old_name],
+    )?;
+    Ok(count)
+}
+
 // 테스트 데이터 삽입
 pub fn insert_test_memos(count: i64) -> Result<i64> {
     let conn = get_db().lock();
@@ -670,4 +726,106 @@ pub fn get_memo_content(id: i64) -> Result<String> {
         |row| row.get(0),
     )?;
     Ok(content)
+}
+
+// ===== 첨부파일 관련 함수 =====
+
+// 첨부파일 저장
+pub fn save_attachment(attachment: &Attachment) -> Result<i64> {
+    let conn = get_db().lock();
+    conn.execute(
+        "INSERT INTO attachments (memo_id, file_name, file_path, original_path, is_copy, file_size)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            attachment.memo_id,
+            attachment.file_name,
+            attachment.file_path,
+            attachment.original_path,
+            attachment.is_copy as i32,
+            attachment.file_size
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+// 메모별 첨부파일 조회
+pub fn get_attachments_by_memo(memo_id: i64) -> Result<Vec<Attachment>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, memo_id, file_name, file_path, original_path, is_copy, file_size, created_at
+         FROM attachments WHERE memo_id = ?1 ORDER BY created_at DESC"
+    )?;
+
+    let attachments = stmt.query_map([memo_id], |row| {
+        Ok(Attachment {
+            id: row.get(0)?,
+            memo_id: row.get(1)?,
+            file_name: row.get(2)?,
+            file_path: row.get(3)?,
+            original_path: row.get(4)?,
+            is_copy: row.get::<_, i32>(5)? != 0,
+            file_size: row.get(6)?,
+            created_at: row.get(7)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(attachments)
+}
+
+// 첨부파일 삭제
+pub fn delete_attachment(id: i64) -> Result<Attachment> {
+    let conn = get_db().lock();
+    // 먼저 첨부파일 정보 조회 (파일 삭제용)
+    let attachment = conn.query_row(
+        "SELECT id, memo_id, file_name, file_path, original_path, is_copy, file_size, created_at
+         FROM attachments WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(Attachment {
+                id: row.get(0)?,
+                memo_id: row.get(1)?,
+                file_name: row.get(2)?,
+                file_path: row.get(3)?,
+                original_path: row.get(4)?,
+                is_copy: row.get::<_, i32>(5)? != 0,
+                file_size: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        },
+    )?;
+    conn.execute("DELETE FROM attachments WHERE id = ?1", params![id])?;
+    Ok(attachment)
+}
+
+// 첨부파일 검색 (파일명으로)
+pub fn search_attachments(query: &str) -> Result<Vec<Attachment>> {
+    let conn = get_db().lock();
+    let search_pattern = format!("%{}%", query);
+    let mut stmt = conn.prepare(
+        "SELECT id, memo_id, file_name, file_path, original_path, is_copy, file_size, created_at
+         FROM attachments WHERE file_name LIKE ?1 ORDER BY created_at DESC"
+    )?;
+
+    let attachments = stmt.query_map([&search_pattern], |row| {
+        Ok(Attachment {
+            id: row.get(0)?,
+            memo_id: row.get(1)?,
+            file_name: row.get(2)?,
+            file_path: row.get(3)?,
+            original_path: row.get(4)?,
+            is_copy: row.get::<_, i32>(5)? != 0,
+            file_size: row.get(6)?,
+            created_at: row.get(7)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(attachments)
+}
+
+// 메모별 첨부파일 삭제 (메모 삭제 시 CASCADE로 자동 삭제되지만, 파일도 삭제하기 위해)
+pub fn get_and_delete_attachments_by_memo(memo_id: i64) -> Result<Vec<Attachment>> {
+    let attachments = get_attachments_by_memo(memo_id)?;
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM attachments WHERE memo_id = ?1", params![memo_id])?;
+    Ok(attachments)
 }

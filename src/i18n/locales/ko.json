@@ -14,7 +14,7 @@
     "settings": "설정"
   },
   "input": {
-    "title": "무엇이든 입력하세요",
+    "title": "AI 메모",
     "description": "연락처, 회의록, 아이디어, 코드 조각...\nAI가 자동으로 정리하고 분류합니다.",
     "placeholder": "여기에 붙여넣기 또는 입력하세요...",
     "submit": "저장",
@@ -23,7 +23,7 @@
     "merged": "기존 메모에 병합됨"
   },
   "search": {
-    "title": "무엇이든 물어보세요",
+    "title": "AI 검색",
     "description": "AI가 메모를 검색해서 답변합니다.",
     "placeholder": "무엇을 알고 싶으세요?",
     "submit": "검색",
