@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useTranslation } from "react-i18next";
@@ -64,7 +65,18 @@ interface SearchResult {
   cost_usd: number;
 }
 
-type Tab = "input" | "search" | "schedule" | "todo" | "settings";
+type Tab = "input" | "search" | "schedule" | "todo" | "ledger" | "settings";
+
+interface Transaction {
+  id: number;
+  memo_id: number | null;
+  tx_type: string;
+  amount: number;
+  description: string;
+  category: string | null;
+  tx_date: string | null;
+  created_at: string;
+}
 
 function App() {
   const { t, i18n } = useTranslation();
@@ -80,6 +92,7 @@ function App() {
   const [memos, setMemos] = useState<Memo[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
@@ -99,6 +112,7 @@ function App() {
   const [zoomLevel, setZoomLevel] = useState(100);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [aiModel, setAiModel] = useState("gemini-3-flash-preview");
+  const [appVersion, setAppVersion] = useState("");
 
   // 무한 스크롤 관련 상태
   const [memoOffset, setMemoOffset] = useState(0);
@@ -128,8 +142,17 @@ function App() {
     loadMemos();
     loadSchedules();
     loadTodos();
+    loadTransactions();
     checkForUpdates();
+    getVersion().then(v => setAppVersion(v)).catch(() => {});
   }, []);
+
+  const loadTransactions = async () => {
+    try {
+      const list = await invoke<Transaction[]>("get_transactions");
+      setTransactions(list);
+    } catch (e) { console.error(e); }
+  };
 
   const checkForUpdates = async () => {
     try {
@@ -231,6 +254,10 @@ function App() {
       const aot = await invoke<string>("get_setting", { key: "always_on_top" });
       const op = await invoke<string>("get_setting", { key: "opacity" });
       setApiKey(key);
+      // API 키가 없으면 설정 탭으로 이동
+      if (!key || key.trim() === "") {
+        setTab("settings");
+      }
       if (lang) { setLanguage(lang); i18n.changeLanguage(lang); }
       if (dark === "true") setDarkMode(true);
       if (aot === "true") {
@@ -391,17 +418,15 @@ function App() {
 
   const handleInput = async () => {
     if (!inputText.trim()) return;
-    const savedText = inputText; // 저장 전 백업
+    const savedText = inputText;
     setLoading(true); setError(null); setResult(null);
     try {
       const res = await invoke<InputResult>("input_memo", { content: savedText });
       setResult(res.message);
-      setInputText(""); // 성공 시에만 초기화
-      loadUsage(); loadMemos(); loadSchedules(); loadTodos();
+      // 저장 후 내용 유지 - 새로 작성 버튼 눌러야 초기화
+      loadUsage(); loadMemos(); loadSchedules(); loadTodos(); loadTransactions();
     } catch (e) {
       setError(String(e));
-      // 에러 발생 시 입력 내용 복원 (혹시 사라졌을 경우)
-      if (!inputText) setInputText(savedText);
     }
     finally { setLoading(false); }
   };
@@ -555,9 +580,9 @@ function App() {
                       onDragEnd={() => { setDraggedMemo(null); setDragOverCategory(null); }}
                       className={`w-full text-left px-2 py-1 text-xs cursor-pointer ${draggedMemo?.id === memo.id ? 'opacity-50' : ''}`}
                       style={{
-                        border: `1px solid ${selectedMemo?.id === memo.id ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                        background: selectedMemo?.id === memo.id ? 'var(--color-accent)' : 'var(--color-bg)',
-                        color: selectedMemo?.id === memo.id ? '#ffffff' : 'var(--color-text)'
+                        border: `1px solid ${selectedMemo?.id === memo.id ? 'var(--accent)' : 'var(--border)'}`,
+                        background: selectedMemo?.id === memo.id ? 'var(--accent)' : 'var(--bg)',
+                        color: selectedMemo?.id === memo.id ? '#ffffff' : 'var(--text)'
                       }}
                     >
                       <div className="font-bold truncate uppercase">{memo.title}</div>
@@ -598,70 +623,112 @@ function App() {
   };
 
   return (
-    <div className="h-screen flex flex-col" style={{ background: 'var(--color-bg)' }}>
-      {/* ===== TOP NAV BAR ===== */}
-      <div className="h-9 flex items-center justify-between px-3" style={{ borderBottom: '2px solid var(--color-border)', background: 'var(--color-text)', color: 'var(--color-bg)' }}>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="px-2 py-1 text-sm font-bold" style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
-            {sidebarOpen ? '◀' : '▶'}
+    <div className="h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
+      {/* ===== TOP NAV BAR - macOS Native Style ===== */}
+      <div
+        className="h-10 flex items-center justify-between px-3 select-none"
+        style={{
+          background: 'var(--bg-secondary)',
+          borderBottom: '1px solid var(--border-light)',
+          WebkitAppRegion: 'drag'
+        } as React.CSSProperties}
+      >
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="btn"
+            style={{ padding: '4px 8px' }}
+          >
+            {sidebarOpen ? '◁' : '▷'}
           </button>
-          <span className="text-sm font-bold uppercase">{t("app.title")}</span>
         </div>
 
-        <nav className="flex gap-1">
-          {[
-            { id: "input" as Tab, label: "NEW" },
-            { id: "search" as Tab, label: "SEARCH" },
-            { id: "schedule" as Tab, label: `CAL${schedules.length > 0 ? `(${schedules.length})` : ''}` },
-            { id: "todo" as Tab, label: `TODO${todos.filter(t => !t.completed).length > 0 ? `(${todos.filter(t => !t.completed).length})` : ''}` },
-            { id: "settings" as Tab, label: "SET" },
-          ].map((item) => (
+        <nav className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* 그룹 1: 메모, 검색 */}
+          <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', marginRight: '12px', border: '1px solid var(--border-light)' }}>
+            {[
+              { id: "input" as Tab, label: "메모" },
+              { id: "search" as Tab, label: "검색" },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
+                className="btn"
+                style={{
+                  background: tab === item.id && !selectedMemo ? 'var(--bg-active)' : 'transparent',
+                  fontWeight: tab === item.id && !selectedMemo ? 600 : 400,
+                  padding: '4px 10px',
+                  fontSize: '13px'
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 그룹 2: 일정, 할일, 가계부 */}
+          <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', marginRight: '12px', border: '1px solid var(--border-light)' }}>
+            {[
+              { id: "schedule" as Tab, label: schedules.length > 0 ? `일정 (${schedules.length})` : '일정' },
+              { id: "todo" as Tab, label: todos.filter(t => !t.completed).length > 0 ? `할일 (${todos.filter(t => !t.completed).length})` : '할일' },
+              { id: "ledger" as Tab, label: transactions.length > 0 ? `가계부 (${transactions.length})` : '가계부' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
+                className="btn"
+                style={{
+                  background: tab === item.id && !selectedMemo ? 'var(--bg-active)' : 'transparent',
+                  fontWeight: tab === item.id && !selectedMemo ? 600 : 400,
+                  padding: '4px 10px',
+                  fontSize: '13px'
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 설정 */}
+          <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
             <button
-              key={item.id}
-              onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
-              className="px-3 py-1 text-xs font-bold uppercase"
+              onClick={() => { setTab("settings"); setSelectedMemo(null); setResult(null); }}
+              className="btn"
               style={{
-                background: tab === item.id && !selectedMemo ? 'var(--color-text)' : 'var(--color-bg)',
-                color: tab === item.id && !selectedMemo ? 'var(--color-bg)' : 'var(--color-text)',
-                border: '2px solid var(--color-border)'
+                background: tab === "settings" && !selectedMemo ? 'var(--bg-active)' : 'transparent',
+                fontWeight: tab === "settings" && !selectedMemo ? 600 : 400,
+                padding: '4px 10px',
+                fontSize: '13px'
               }}
             >
-              {item.label}
+              설정
             </button>
-          ))}
+          </div>
         </nav>
 
-        <div className="flex items-center gap-1">
-          {saving && <span className="text-xs px-2" style={{ color: 'var(--color-bg)' }}>...</span>}
+        <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {saving && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>저장중...</span>}
           <button
             onClick={toggleAlwaysOnTop}
-            className="px-2 py-1 text-xs font-bold"
-            style={{
-              background: alwaysOnTop ? 'var(--color-bg)' : 'transparent',
-              color: alwaysOnTop ? 'var(--color-text)' : 'var(--color-bg)',
-              border: alwaysOnTop ? '1px solid var(--color-border)' : 'none'
-            }}
-            title="Always on Top"
+            className="btn"
+            style={{ padding: '4px 8px', background: alwaysOnTop ? 'var(--bg-active)' : 'transparent' }}
+            title="항상 위에"
           >
-            PIN
+            📌
           </button>
           <button
             onClick={toggleDarkMode}
-            className="px-2 py-1 text-xs font-bold"
-            style={{
-              background: 'var(--color-bg)',
-              color: 'var(--color-text)',
-              border: '1px solid var(--color-border)'
-            }}
+            className="btn"
+            style={{ padding: '4px 8px' }}
           >
-            {darkMode ? 'LT' : 'DK'}
+            {darkMode ? '☀️' : '🌙'}
           </button>
         </div>
       </div>
 
       {/* ===== UPDATE BANNER ===== */}
       {updateAvailable && (
-        <div style={{ background: 'var(--color-accent)', color: '#ffffff' }}>
+        <div style={{ background: 'var(--accent)', color: '#ffffff' }}>
           <div className="flex items-center justify-between px-6 py-3">
             <span className="font-bold uppercase">
               NEW VERSION {updateAvailable.version} AVAILABLE
@@ -678,7 +745,7 @@ function App() {
                 onClick={installUpdate}
                 disabled={updating}
                 className="px-4 py-2 font-bold uppercase"
-                style={{ background: '#ffffff', color: 'var(--color-accent)', border: 'none' }}
+                style={{ background: 'var(--bg)', color: 'var(--accent)', border: 'none' }}
               >
                 {updating ? 'UPDATING...' : 'UPDATE NOW'}
               </button>
@@ -696,11 +763,11 @@ function App() {
 
       {/* ===== MAIN LAYOUT ===== */}
       <div className="flex-1 flex overflow-hidden">
-        {/* ===== LEFT SIDEBAR (카테고리) ===== */}
+        {/* ===== LEFT SIDEBAR ===== */}
         {sidebarOpen && (
-        <div className="w-44 flex flex-col overflow-hidden" style={{ borderRight: '2px solid var(--color-border)' }}>
-          <div className="px-2 py-1 flex justify-between items-center" style={{ borderBottom: '1px solid var(--color-border)' }}>
-            <p className="section-label">MEMOS ({memos.length}/{totalMemoCount})</p>
+        <div className="w-52 flex flex-col overflow-hidden" style={{ borderRight: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
+          <div className="px-3 py-2 flex justify-between items-center">
+            <span className="section-label">메모 ({memos.length}/{totalMemoCount})</span>
             <button
               onClick={() => {
                 if (expandedCategories.size > 0) {
@@ -709,37 +776,32 @@ function App() {
                   setExpandedCategories(new Set(allCategories));
                 }
               }}
-              className="text-xs px-1"
-              style={{ color: 'var(--color-text-muted)' }}
+              className="btn"
+              style={{ padding: '2px 6px', fontSize: '11px' }}
             >
-              {expandedCategories.size > 0 ? '[-]' : '[+]'}
+              {expandedCategories.size > 0 ? '접기' : '펼치기'}
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2" ref={memoListRef}>
+          <div className="flex-1 overflow-y-auto px-2" ref={memoListRef}>
             {Object.keys(categoryTree.children).length === 0 ? (
-              <div className="p-4 text-center" style={{ border: '2px dashed var(--color-text-muted)' }}>
-                <p style={{ color: 'var(--color-text-muted)' }} className="text-xs uppercase">No memos yet</p>
+              <div className="empty-state">
+                <p style={{ fontSize: '12px' }}>메모가 없습니다</p>
               </div>
             ) : (
               <>
                 {renderCategoryNode(categoryTree)}
-                {/* 무한 스크롤 트리거 */}
-                <div ref={loadMoreTriggerRef} className="py-4 text-center" style={{ minHeight: '50px' }}>
+                <div ref={loadMoreTriggerRef} className="py-3 text-center">
                   {hasMoreMemos ? (
                     loadingMoreMemos ? (
-                      <span className="text-xs" style={{ color: 'var(--color-accent)' }}>로딩중...</span>
+                      <span className="loading-spinner" />
                     ) : (
-                      <button
-                        onClick={loadMoreMemos}
-                        className="text-xs px-2 py-1"
-                        style={{ color: 'var(--color-accent)', border: '1px dashed var(--color-accent)' }}
-                      >
-                        ↓ 더보기 ({memos.length}/{totalMemoCount})
+                      <button onClick={loadMoreMemos} className="btn" style={{ fontSize: '11px' }}>
+                        더 보기
                       </button>
                     )
-                  ) : (
-                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>- 끝 -</span>
+                  ) : memos.length > 0 && (
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>끝</span>
                   )}
                 </div>
               </>
@@ -747,10 +809,10 @@ function App() {
           </div>
 
           {usage && (
-            <div className="px-2 py-1" style={{ borderTop: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', fontSize: '10px' }}>
-              <div className="flex justify-between" style={{ color: 'var(--color-text-muted)' }}>
-                <span>{usage.today_input_tokens + usage.today_output_tokens}tk</span>
-                <span>${usage.today_cost_usd.toFixed(3)}</span>
+            <div className="px-3 py-2" style={{ borderTop: '1px solid var(--border-light)', fontSize: '11px', color: 'var(--text-muted)' }}>
+              <div className="flex justify-between">
+                <span>{usage.today_input_tokens + usage.today_output_tokens} 토큰</span>
+                <span>${usage.today_cost_usd.toFixed(4)}</span>
               </div>
             </div>
           )}
@@ -758,32 +820,167 @@ function App() {
         )}
 
         {/* ===== MAIN CONTENT ===== */}
-        <div className="flex-1 overflow-auto p-2 flex flex-col" style={{ background: 'var(--color-bg-secondary)' }}>
-          {/* ===== NEW MEMO ===== */}
-          {tab === "input" && !selectedMemo && (
-            <div className="card flex-1 flex flex-col" style={{ padding: '8px' }}>
-              <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
-                {t("input.title")}
-                {loading && <span style={{ marginLeft: '8px', color: 'var(--color-warning)' }}>저장중...</span>}
-                {!loading && result && <span style={{ marginLeft: '8px', color: 'var(--color-success)' }}>✓</span>}
+        <div className="flex-1 overflow-auto p-4 flex flex-col" style={{ background: 'var(--bg)' }}>
+          {/* ===== HOME DASHBOARD + MEMO INPUT ===== */}
+          {tab === "input" && !selectedMemo && (() => {
+            // 오늘/내일 일정
+            const now = new Date();
+            const today = now.toISOString().split('T')[0];
+            const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const upcomingSchedules = schedules.filter(s => {
+              const date = s.start_time?.split('T')[0];
+              return date && date >= today;
+            }).slice(0, 3);
+
+            // 미완료 할일
+            const pendingTodos = todos.filter(t => !t.completed).slice(0, 3);
+
+            // 이번달 가계부
+            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const monthTxs = transactions.filter(tx => {
+              const date = tx.tx_date || tx.created_at;
+              return date?.startsWith(currentMonth);
+            });
+            const monthIncome = monthTxs.filter(t => t.tx_type === 'income').reduce((s, t) => s + t.amount, 0);
+            const monthExpense = monthTxs.filter(t => t.tx_type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+            return (
+              <div className="flex flex-col gap-3 flex-1">
+                {/* ===== DASHBOARD CARDS ===== */}
+                <div className="grid grid-cols-3 gap-3">
+                  {/* 일정 카드 */}
+                  <div
+                    onClick={() => setTab("schedule")}
+                    className="card cursor-pointer transition-all hover:shadow-md"
+                    style={{ padding: '12px', borderLeft: '3px solid var(--accent)' }}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>📅 일정</span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{schedules.length}개</span>
+                    </div>
+                    {upcomingSchedules.length === 0 ? (
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>예정된 일정 없음</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {upcomingSchedules.map(s => (
+                          <div key={s.id} style={{ fontSize: '11px' }} className="truncate">
+                            <span style={{ color: 'var(--accent)', marginRight: '4px' }}>
+                              {s.start_time?.split('T')[0] === today ? '오늘' :
+                               s.start_time?.split('T')[0] === tomorrow ? '내일' :
+                               s.start_time?.substring(5, 10)}
+                            </span>
+                            {s.title}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 할일 카드 */}
+                  <div
+                    onClick={() => setTab("todo")}
+                    className="card cursor-pointer transition-all hover:shadow-md"
+                    style={{ padding: '12px', borderLeft: '3px solid var(--success)' }}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>✓ 할일</span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{todos.filter(t => !t.completed).length}개</span>
+                    </div>
+                    {pendingTodos.length === 0 ? (
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>할일 없음</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {pendingTodos.map(t => (
+                          <div key={t.id} style={{ fontSize: '11px' }} className="truncate flex items-center gap-1">
+                            {t.priority === 'high' && <span style={{ color: 'var(--error)' }}>●</span>}
+                            {t.title}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 가계부 카드 */}
+                  <div
+                    onClick={() => setTab("ledger")}
+                    className="card cursor-pointer transition-all hover:shadow-md"
+                    style={{ padding: '12px', borderLeft: '3px solid var(--error)' }}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>💰 이번달</span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{monthTxs.length}건</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between" style={{ fontSize: '11px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>수입</span>
+                        <span style={{ color: 'var(--success)', fontWeight: 500 }}>+{monthIncome.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between" style={{ fontSize: '11px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>지출</span>
+                        <span style={{ color: 'var(--error)', fontWeight: 500 }}>-{monthExpense.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between" style={{ fontSize: '11px', borderTop: '1px solid var(--border-light)', paddingTop: '4px', marginTop: '4px' }}>
+                        <span style={{ fontWeight: 500 }}>잔액</span>
+                        <span style={{ fontWeight: 600, color: monthIncome - monthExpense >= 0 ? 'var(--success)' : 'var(--error)' }}>
+                          {(monthIncome - monthExpense).toLocaleString()}원
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ===== MEMO INPUT ===== */}
+                <div className="card flex-1 flex flex-col" style={{ padding: '8px' }}>
+                  <div className="card-header flex justify-between items-center" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>
+                    <span>
+                      {t("input.title")}
+                      {loading && <span style={{ marginLeft: '8px', color: 'var(--text-muted)' }}>저장중...</span>}
+                      {!loading && result && <span style={{ marginLeft: '8px', color: 'var(--success)' }}>✓ {result}</span>}
+                    </span>
+                    <div className="flex gap-2">
+                      {inputText.trim() && (
+                        <button
+                          onClick={() => { setInputText(""); setResult(null); setError(null); }}
+                          disabled={loading}
+                          className="btn"
+                          style={{ padding: '4px 10px', fontSize: '11px' }}
+                        >
+                          새로 작성
+                        </button>
+                      )}
+                      <button
+                        onClick={handleInput}
+                        disabled={loading || !inputText.trim()}
+                        className="btn btn-primary"
+                        style={{ padding: '4px 12px', fontSize: '11px' }}
+                      >
+                        {loading ? '저장중...' : '저장'}
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && inputText.trim() && !loading) {
+                        handleInput();
+                      }
+                    }}
+                    placeholder={t("input.placeholder")}
+                    className="input resize-none flex-1"
+                    style={{ fontSize: '12px' }}
+                    disabled={loading}
+                  />
+                  <div className="flex items-center justify-between" style={{ marginTop: '4px' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                      ⌘/Ctrl+Enter로 저장
+                    </span>
+                    {error && <span style={{ fontSize: '10px', color: 'var(--error)' }}>{error}</span>}
+                  </div>
+                </div>
               </div>
-              <textarea
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onBlur={() => {
-                  // 포커스 잃을 때 자동 저장
-                  if (inputText.trim().length > 10 && !loading) {
-                    handleInput();
-                  }
-                }}
-                placeholder={t("input.placeholder")}
-                className="input resize-none flex-1"
-                style={{ fontSize: '12px' }}
-                disabled={loading}
-              />
-              {error && <p style={{ fontSize: '10px', color: 'var(--color-error)', marginTop: '4px' }}>{error}</p>}
-            </div>
-          )}
+            );
+          })()}
 
           {/* ===== SEARCH ===== */}
           {tab === "search" && !selectedMemo && (
@@ -798,7 +995,7 @@ function App() {
                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                     placeholder={t("search.placeholder")}
                     className="input flex-1"
-                    style={{ fontSize: '12px', padding: '4px 8px' }}
+                    style={{ fontSize: '14px', padding: '10px 12px' }}
                     disabled={loading}
                   />
                   <button onClick={handleSearch} disabled={loading || !searchText.trim()} className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '11px' }}>
@@ -825,8 +1022,8 @@ function App() {
                   일정 ({schedules.length})
                 </div>
                 {schedules.length === 0 ? (
-                  <div className="p-4 text-center" style={{ border: '2px dashed var(--color-text-muted)' }}>
-                    <p style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
+                  <div className="p-4 text-center" style={{ border: '2px dashed var(--text-muted)' }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
                       아직 일정이 없습니다.<br />
                       메모에 날짜/시간이 포함되면 자동으로 추출됩니다.
                     </p>
@@ -838,25 +1035,26 @@ function App() {
                         key={schedule.id}
                         className="flex items-start justify-between p-2"
                         style={{
-                          border: '1px solid var(--color-border)',
-                          background: 'var(--color-bg)'
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg)',
+                          borderRadius: '4px'
                         }}
                       >
                         <div className="flex-1">
                           <div className="font-bold text-sm">{schedule.title}</div>
                           {schedule.start_time && (
-                            <div className="text-xs mt-1" style={{ color: 'var(--color-accent)' }}>
+                            <div className="text-xs mt-1" style={{ color: 'var(--accent)' }}>
                               {formatScheduleDate(schedule.start_time)}
                               {schedule.end_time && ` ~ ${formatScheduleDate(schedule.end_time)}`}
                             </div>
                           )}
                           {schedule.location && (
-                            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                              {schedule.location}
+                            <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                              📍 {schedule.location}
                             </div>
                           )}
                           {schedule.description && (
-                            <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                            <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                               {schedule.description}
                             </div>
                           )}
@@ -884,8 +1082,8 @@ function App() {
                   할일 ({todos.filter(t => !t.completed).length}/{todos.length})
                 </div>
                 {todos.length === 0 ? (
-                  <div className="p-4 text-center" style={{ border: '2px dashed var(--color-text-muted)' }}>
-                    <p style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
+                  <div className="p-4 text-center" style={{ border: '2px dashed var(--text-muted)' }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
                       아직 할일이 없습니다.<br />
                       메모에 "~해야 한다" 같은 내용이 있으면 자동으로 추출됩니다.
                     </p>
@@ -897,18 +1095,20 @@ function App() {
                         key={todo.id}
                         className="flex items-center gap-2 p-2"
                         style={{
-                          border: '1px solid var(--color-border)',
-                          background: todo.completed ? 'var(--color-bg-tertiary)' : 'var(--color-bg)',
-                          opacity: todo.completed ? 0.6 : 1
+                          border: '1px solid var(--border)',
+                          background: todo.completed ? 'var(--bg-secondary)' : 'var(--bg)',
+                          opacity: todo.completed ? 0.6 : 1,
+                          borderRadius: '4px'
                         }}
                       >
                         <button
                           onClick={() => toggleTodo(todo.id)}
                           className="w-5 h-5 flex items-center justify-center text-xs font-bold"
                           style={{
-                            border: '2px solid var(--color-border)',
-                            background: todo.completed ? 'var(--color-success)' : 'transparent',
-                            color: todo.completed ? '#fff' : 'var(--color-text)'
+                            border: '2px solid var(--border)',
+                            background: todo.completed ? 'var(--success)' : 'transparent',
+                            color: todo.completed ? '#fff' : 'var(--text)',
+                            borderRadius: '3px'
                           }}
                         >
                           {todo.completed ? '✓' : ''}
@@ -925,16 +1125,17 @@ function App() {
                               <span
                                 className="text-xs px-1"
                                 style={{
-                                  background: todo.priority === 'high' ? 'var(--color-error)' : todo.priority === 'medium' ? 'var(--color-warning)' : 'var(--color-bg-tertiary)',
-                                  color: todo.priority === 'high' ? '#fff' : 'var(--color-text)'
+                                  background: todo.priority === 'high' ? 'var(--error)' : todo.priority === 'medium' ? 'var(--text-muted)' : 'var(--bg-secondary)',
+                                  color: todo.priority === 'high' ? '#fff' : 'var(--text)',
+                                  borderRadius: '2px'
                                 }}
                               >
                                 {todo.priority.toUpperCase()}
                               </span>
                             )}
                             {todo.due_date && (
-                              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                                {todo.due_date}
+                              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                📅 {todo.due_date}
                               </span>
                             )}
                           </div>
@@ -954,11 +1155,162 @@ function App() {
             </div>
           )}
 
+          {/* ===== LEDGER (가계부) - 월별 보기 ===== */}
+          {tab === "ledger" && !selectedMemo && (() => {
+            // 월별로 그룹화
+            const groupByMonth = (txList: Transaction[]) => {
+              const groups: Record<string, Transaction[]> = {};
+              txList.forEach(tx => {
+                const dateStr = tx.tx_date || tx.created_at;
+                const month = dateStr ? dateStr.substring(0, 7) : 'unknown'; // YYYY-MM
+                if (!groups[month]) groups[month] = [];
+                groups[month].push(tx);
+              });
+              return groups;
+            };
+
+            const monthlyGroups = groupByMonth(transactions);
+            const sortedMonths = Object.keys(monthlyGroups).sort().reverse(); // 최신순
+
+            // 현재 월 기본 선택
+            const now = new Date();
+            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            return (
+              <div className="space-y-2">
+                {transactions.length === 0 ? (
+                  <div className="card" style={{ padding: '8px' }}>
+                    <div className="p-4 text-center" style={{ border: '2px dashed var(--text-muted)' }}>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                        아직 거래 내역이 없습니다.<br />
+                        메모에 금액이 포함되면 자동으로 추출됩니다.<br />
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                          예: "커피 5000원", "월급 300만원 입금"
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  sortedMonths.map(month => {
+                    const monthTxs = monthlyGroups[month];
+                    const income = monthTxs.filter(t => t.tx_type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                    const expense = monthTxs.filter(t => t.tx_type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                    const balance = income - expense;
+
+                    // 월 표시 포맷 (2026-01 → 2026년 1월)
+                    const [year, mon] = month.split('-');
+                    const monthLabel = month === 'unknown' ? '날짜 미상' : `${year}년 ${parseInt(mon)}월`;
+                    const isCurrentMonth = month === currentMonth;
+
+                    return (
+                      <div key={month} className="card" style={{ padding: '8px' }}>
+                        {/* 월 헤더 + 요약 */}
+                        <div className="card-header flex justify-between items-center" style={{ fontSize: '11px', marginBottom: '6px', paddingBottom: '6px' }}>
+                          <span style={{ fontWeight: 600 }}>
+                            {monthLabel} {isCurrentMonth && <span style={{ color: 'var(--accent)', fontSize: '10px' }}>(이번달)</span>}
+                          </span>
+                          <span style={{ fontSize: '10px' }}>{monthTxs.length}건</span>
+                        </div>
+
+                        {/* 월별 요약 */}
+                        <div className="flex gap-2 mb-3">
+                          <div className="flex-1 p-2" style={{ background: 'var(--bg-secondary)', borderRadius: '3px' }}>
+                            <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>수입</div>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success)' }}>
+                              +{income.toLocaleString()}원
+                            </div>
+                          </div>
+                          <div className="flex-1 p-2" style={{ background: 'var(--bg-secondary)', borderRadius: '3px' }}>
+                            <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>지출</div>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--error)' }}>
+                              -{expense.toLocaleString()}원
+                            </div>
+                          </div>
+                          <div className="flex-1 p-2" style={{ background: 'var(--bg-secondary)', borderRadius: '3px' }}>
+                            <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>잔액</div>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: balance >= 0 ? 'var(--success)' : 'var(--error)' }}>
+                              {balance >= 0 ? '+' : ''}{balance.toLocaleString()}원
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 거래 목록 */}
+                        <div className="space-y-1">
+                          {monthTxs.map((tx) => (
+                            <div
+                              key={tx.id}
+                              className="flex items-center justify-between p-2"
+                              style={{
+                                border: '1px solid var(--border)',
+                                background: 'var(--bg)',
+                                borderRadius: '3px'
+                              }}
+                            >
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    style={{
+                                      fontSize: '9px',
+                                      padding: '1px 4px',
+                                      background: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)',
+                                      color: '#fff',
+                                      borderRadius: '2px'
+                                    }}
+                                  >
+                                    {tx.tx_type === 'income' ? '수입' : '지출'}
+                                  </span>
+                                  <span style={{ fontSize: '12px' }}>{tx.description}</span>
+                                </div>
+                                <div className="flex gap-2 mt-1">
+                                  {tx.category && (
+                                    <span className="tag" style={{ fontSize: '9px' }}>{tx.category}</span>
+                                  )}
+                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                    {tx.tx_date ? tx.tx_date.substring(5) : tx.created_at.substring(5, 10)}
+                                  </span>
+                                </div>
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  color: tx.tx_type === 'income' ? 'var(--success)' : 'var(--error)'
+                                }}
+                              >
+                                {tx.tx_type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()}원
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            );
+          })()}
+
           {/* ===== SETTINGS ===== */}
           {tab === "settings" && !selectedMemo && (
             <div className="space-y-3">
+              {/* API 키 없음 안내 */}
+              {(!apiKey || apiKey.trim() === "") && (
+                <div style={{
+                  padding: '12px 16px',
+                  background: 'var(--accent)',
+                  color: 'white',
+                  borderRadius: '3px',
+                  fontSize: '13px'
+                }}>
+                  <strong>시작하려면 API 키가 필요해요</strong>
+                  <p style={{ marginTop: '4px', opacity: 0.9, fontSize: '12px' }}>
+                    아래에서 Google Gemini API 키를 입력하세요. 무료예요.
+                  </p>
+                </div>
+              )}
+
               <div className="card" style={{ padding: '8px' }}>
-                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>구글 제미나이 키 값</div>
+                <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>Google Gemini API 키</div>
                 <input
                   type="password"
                   value={apiKey}
@@ -969,8 +1321,8 @@ function App() {
                 />
                 <div className="code-block" style={{ padding: '6px', fontSize: '10px' }}>
                   <p className="font-bold mb-1"># {t("settings.apiKeyGuide")}</p>
-                  <ol className="list-decimal list-inside space-y-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-                    <li>$ open <a href="https://aistudio.google.com/apikey" target="_blank" style={{ color: 'var(--color-accent)' }}>aistudio.google.com/apikey</a></li>
+                  <ol className="list-decimal list-inside space-y-0.5" style={{ color: 'var(--text-secondary)' }}>
+                    <li>$ open <a href="https://aistudio.google.com/apikey" target="_blank" style={{ color: 'var(--accent)' }}>aistudio.google.com/apikey</a></li>
                     <li>$ {t("settings.apiKeyStep2")}</li>
                     <li>$ {t("settings.apiKeyStep3")}</li>
                   </ol>
@@ -982,7 +1334,7 @@ function App() {
                 <select value={aiModel} onChange={(e) => setAiModel(e.target.value)} className="input" style={{ fontSize: '11px', padding: '4px 6px' }}>
                   {availableModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
-                <div className="mt-2" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
+                <div className="mt-2" style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
                   2.0 = 저렴 | 2.5 = 균형 | 3.x = 최신/강력
                 </div>
               </div>
@@ -1070,6 +1422,11 @@ function App() {
               {(result || error) && (
                 <p className={`status ${error ? 'status-error' : 'status-success'}`} style={{ fontSize: '10px' }}>{error || result}</p>
               )}
+
+              {/* 버전 정보 */}
+              <div style={{ textAlign: 'center', paddingTop: '16px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                졸라좋아 메모 {appVersion && `v${appVersion}`}
+              </div>
             </div>
           )}
 
@@ -1079,7 +1436,7 @@ function App() {
               {/* 헤더: 닫기 & 삭제 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="tag" style={{ background: 'var(--color-accent)', color: '#ffffff', fontSize: '10px', padding: '2px 6px' }}>{editCategory}</span>
+                  <span className="tag" style={{ background: 'var(--accent)', color: '#ffffff', fontSize: '10px', padding: '2px 6px' }}>{editCategory}</span>
                   {saving && <span className="status status-warning" style={{ fontSize: '10px' }}>SAVING...</span>}
                 </div>
                 <div className="flex gap-1">
@@ -1095,7 +1452,7 @@ function App() {
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 className="w-full text-base font-bold uppercase bg-transparent border-b-2 focus:outline-none py-1"
-                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
                 placeholder="TITLE..."
               />
 
@@ -1131,7 +1488,7 @@ function App() {
               )}
 
               {/* 메타 정보 */}
-              <div style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
+              <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
                 {selectedMemo.created_at} | {selectedMemo.updated_at}
               </div>
             </div>

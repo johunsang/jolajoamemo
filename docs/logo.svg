@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- Background Circle -->
+  <circle cx="60" cy="60" r="56" fill="#F5B800"/>
+
+  <!-- Memo/Note shape -->
+  <rect x="30" y="25" width="60" height="70" rx="8" fill="#ffffff" stroke="#191919" stroke-width="2"/>
+
+  <!-- Lines on memo -->
+  <line x1="40" y1="45" x2="80" y2="45" stroke="#E5E5E5" stroke-width="3" stroke-linecap="round"/>
+  <line x1="40" y1="58" x2="75" y2="58" stroke="#E5E5E5" stroke-width="3" stroke-linecap="round"/>
+  <line x1="40" y1="71" x2="65" y2="71" stroke="#E5E5E5" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Sparkle/AI magic star -->
+  <g transform="translate(75, 20)">
+    <path d="M0,-12 L3,-3 L12,0 L3,3 L0,12 L-3,3 L-12,0 L-3,-3 Z" fill="#191919"/>
+  </g>
+
+  <!-- Small sparkles -->
+  <circle cx="95" cy="35" r="3" fill="#191919"/>
+  <circle cx="85" cy="12" r="2" fill="#191919"/>
+</svg>

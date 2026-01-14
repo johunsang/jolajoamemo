@@ -61,6 +61,18 @@ pub struct Todo {
     pub created_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Transaction {
+    pub id: i64,
+    pub memo_id: Option<i64>,
+    pub tx_type: String,  // "income" or "expense"
+    pub amount: i64,
+    pub description: String,
+    pub category: Option<String>,
+    pub tx_date: Option<String>,
+    pub created_at: String,
+}
+
 pub fn init_db(app_dir: PathBuf) -> Result<()> {
     let db_path = app_dir.join("jolajoamemo.db");
     std::fs::create_dir_all(&app_dir).ok();
@@ -127,6 +139,21 @@ pub fn init_db(app_dir: PathBuf) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_todos_completed ON todos(completed);
         CREATE INDEX IF NOT EXISTS idx_todos_due ON todos(due_date);
+
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memo_id INTEGER,
+            tx_type TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT,
+            tx_date TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (memo_id) REFERENCES memos(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(tx_type);
+        CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(tx_date);
 
         INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'ko');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('gemini_api_key', '');
@@ -528,4 +555,55 @@ pub fn insert_test_memos(count: i64) -> Result<i64> {
     }
 
     Ok(count)
+}
+
+// ===== 가계부(거래) 관련 함수 =====
+
+// 거래 저장
+pub fn save_transaction(transaction: &Transaction) -> Result<i64> {
+    let conn = get_db().lock();
+    conn.execute(
+        "INSERT INTO transactions (memo_id, tx_type, amount, description, category, tx_date)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            transaction.memo_id,
+            transaction.tx_type,
+            transaction.amount,
+            transaction.description,
+            transaction.category,
+            transaction.tx_date
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+// 모든 거래 조회
+pub fn get_all_transactions() -> Result<Vec<Transaction>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, memo_id, tx_type, amount, description, category, tx_date, created_at
+         FROM transactions ORDER BY tx_date DESC, created_at DESC"
+    )?;
+
+    let transactions = stmt.query_map([], |row| {
+        Ok(Transaction {
+            id: row.get(0)?,
+            memo_id: row.get(1)?,
+            tx_type: row.get(2)?,
+            amount: row.get(3)?,
+            description: row.get(4)?,
+            category: row.get(5)?,
+            tx_date: row.get(6)?,
+            created_at: row.get(7)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(transactions)
+}
+
+// 거래 삭제
+pub fn delete_transaction(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM transactions WHERE id = ?1", params![id])?;
+    Ok(())
 }

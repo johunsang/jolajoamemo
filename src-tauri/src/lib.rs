@@ -1,7 +1,7 @@
 mod ai;
 mod db;
 
-use db::{Memo, Schedule, Todo};
+use db::{Memo, Schedule, Todo, Transaction};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
@@ -75,6 +75,7 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
 
     let mut schedules_added = 0;
     let mut todos_added = 0;
+    let mut transactions_added = 0;
 
     for analysis in items {
         let tags_str = analysis.tags.join(", ");
@@ -160,14 +161,29 @@ async fn input_memo(content: String) -> Result<InputResult, String> {
             db::save_todo(&todo).map_err(|e| e.to_string())?;
             todos_added += 1;
         }
+
+        // 거래 저장 (메모와 연결)
+        for tx_info in analysis.transactions {
+            let transaction = Transaction {
+                id: 0,
+                memo_id,  // 원본 메모와 연결
+                tx_type: tx_info.tx_type,
+                amount: tx_info.amount,
+                description: tx_info.description,
+                category: tx_info.category,
+                tx_date: tx_info.tx_date,
+                created_at: String::new(),
+            };
+            db::save_transaction(&transaction).map_err(|e| e.to_string())?;
+            transactions_added += 1;
+        }
     }
 
-    let extra_msg = match (schedules_added > 0, todos_added > 0) {
-        (true, true) => format!(" (일정 {}개, 할일 {}개)", schedules_added, todos_added),
-        (true, false) => format!(" (일정 {}개)", schedules_added),
-        (false, true) => format!(" (할일 {}개)", todos_added),
-        (false, false) => String::new(),
-    };
+    let mut extra_parts = Vec::new();
+    if schedules_added > 0 { extra_parts.push(format!("일정 {}개", schedules_added)); }
+    if todos_added > 0 { extra_parts.push(format!("할일 {}개", todos_added)); }
+    if transactions_added > 0 { extra_parts.push(format!("가계부 {}건", transactions_added)); }
+    let extra_msg = if extra_parts.is_empty() { String::new() } else { format!(" ({})", extra_parts.join(", ")) };
 
     let message = if titles.len() == 1 {
         format!("'{}' 저장됨{}", titles[0], extra_msg)
@@ -363,11 +379,24 @@ fn get_memo_count() -> Result<i64, String> {
     db::get_memo_count().map_err(|e| e.to_string())
 }
 
+// 모든 거래 조회
+#[tauri::command]
+fn get_transactions() -> Result<Vec<Transaction>, String> {
+    db::get_all_transactions().map_err(|e| e.to_string())
+}
+
+// 거래 삭제
+#[tauri::command]
+fn delete_transaction(id: i64) -> Result<(), String> {
+    db::delete_transaction(id).map_err(|e| e.to_string())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir().expect("Failed to get app dir");
             db::init_db(app_dir).expect("Failed to init database");
@@ -391,7 +420,9 @@ pub fn run() {
             delete_schedule,
             get_todos,
             toggle_todo,
-            delete_todo
+            delete_todo,
+            get_transactions,
+            delete_transaction
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
