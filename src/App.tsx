@@ -489,31 +489,6 @@ function App() {
     } catch (e) { setError(String(e)); }
   };
 
-  // 일정 날짜 포맷
-  const formatScheduleDate = (dateStr: string | null) => {
-    if (!dateStr) return "";
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr; // 파싱 실패시 원본 반환
-
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const scheduleDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const diffDays = Math.floor((scheduleDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-    // 실제 날짜 (월/일)
-    const actualDate = `${date.getMonth() + 1}/${date.getDate()}`;
-
-    // 상대적 표현
-    let relativeLabel = "";
-    if (diffDays === 0) relativeLabel = "(오늘)";
-    else if (diffDays === 1) relativeLabel = "(내일)";
-    else if (diffDays === -1) relativeLabel = "(어제)";
-    else if (diffDays > 1 && diffDays <= 7) relativeLabel = `(${diffDays}일 후)`;
-
-    const time = date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-    return `${actualDate}${relativeLabel} ${time}`;
-  };
-
   const handleInput = async () => {
     if (!inputText.trim()) return;
     const savedText = inputText;
@@ -1405,7 +1380,7 @@ function App() {
                       const income = monthTxs.filter(t => t.tx_type === 'income').reduce((sum, t) => sum + t.amount, 0);
                       const expense = monthTxs.filter(t => t.tx_type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
-                      const [year, mon] = month.split('-');
+                      const [, mon] = month.split('-');
                       const monthLabel = month === 'unknown' ? '날짜 미상' : `${parseInt(mon)}월`;
                       const isCurrentMonth = month === currentMonth;
 
