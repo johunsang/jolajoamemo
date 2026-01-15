@@ -9,6 +9,8 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useTranslation } from "react-i18next";
 import { languages } from "./i18n";
+// import DataCollection from "./components/DataCollection";
+import FileConsulting from "./components/FileConsulting";
 
 interface Memo {
   id: number;
@@ -68,7 +70,118 @@ interface SearchResult {
   cost_usd: number;
 }
 
-type Tab = "input" | "search" | "schedule" | "todo" | "ledger" | "organize" | "settings";
+type Tab = "input" | "search" | "schedule" | "todo" | "ledger" | "organize" | "research" | "collect" | "extract" | "agent" | "data" | "consulting" | "settings";
+
+interface SearchItem {
+  title: string;
+  link: string;
+  description: string;
+  source: string;
+}
+
+interface SourceSummary {
+  title: string;
+  url: string;
+  source: string;
+  summary: string;
+}
+
+interface ResearchResult {
+  query: string;
+  summary: string;
+  key_points: string[];
+  sources: SearchItem[];
+  source_summaries: SourceSummary[];  // 별첨: 출처별 요약
+  full_report: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  search_engines_used: string[];
+  memo_id: number | null;
+}
+
+// Agent (AI 브라우저 에이전트) 인터페이스
+interface AgentStep {
+  step_number: number;
+  action_type: string;
+  selector: string | null;
+  value: string | null;
+  reason: string;
+  result: string;
+}
+
+interface AgentResult {
+  goal: string;
+  success: boolean;
+  steps: AgentStep[];
+  final_data: Record<string, unknown> | null;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+}
+
+// 데이터셋 관련 인터페이스
+interface Dataset {
+  id: number;
+  name: string;
+  description: string;
+  columns: string[];
+  row_count: number;
+  created_at: string;
+}
+
+interface DatasetRow {
+  id: number;
+  dataset_id: number;
+  row_index: number;
+  data: string[];
+}
+
+interface ChartData {
+  chart_type: string;
+  title: string;
+  labels: string[];
+  values: number[];
+}
+
+interface StatItem {
+  label: string;
+  value: string;
+}
+
+interface DatasetAnalysis {
+  summary: string;
+  insights: string[];
+  statistics: StatItem[];
+  chart_data: ChartData | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+interface DatasetQAResult {
+  answer: string;
+  relevant_rows: string[][];
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+interface ResearchTaskInfo {
+  id: number;
+  task_type: string;
+  description: string;
+  status: string;
+}
+
+interface ResearchProgress {
+  step: number;
+  total_steps: number;
+  task_type: string;
+  description: string;
+  status: string;
+  tasks: ResearchTaskInfo[];
+}
 
 interface FileInfo {
   name: string;
@@ -191,6 +304,42 @@ function App() {
   const [organizePhase, setOrganizePhase] = useState<'select-folder' | 'select-method' | 'preview' | 'done'>('select-folder'); // 현재 단계
   const [organizeMethod, setOrganizeMethod] = useState<string>(""); // 선택된 정리 방식
 
+  // 리서치 관련 상태
+  const [researchQuery, setResearchQuery] = useState<string>("");
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [researchResult, setResearchResult] = useState<ResearchResult | null>(null);
+  const [researchProgress, setResearchProgress] = useState<ResearchProgress | null>(null);
+  const [naverClientId, setNaverClientId] = useState<string>("");
+  const [naverClientSecret, setNaverClientSecret] = useState<string>("");
+  const [googleSearchApiKey, setGoogleSearchApiKey] = useState<string>("");
+  const [googleSearchCx, setGoogleSearchCx] = useState<string>("");
+
+  // Extract (AI 데이터 추출) 관련 상태
+  const [extractUrl, setExtractUrl] = useState<string>("");
+  const [extractSchema, setExtractSchema] = useState<string>("");
+  const [extractLoading, setExtractLoading] = useState(false);
+  const [extractResult, setExtractResult] = useState<{url: string; data: unknown; input_tokens: number; output_tokens: number; cost_usd: number} | null>(null);
+
+  // Agent (AI 브라우저 에이전트) 관련 상태
+  const [agentGoal, setAgentGoal] = useState<string>("");
+  const [agentStartUrl, setAgentStartUrl] = useState<string>("https://www.naver.com");
+  const [agentMaxSteps, setAgentMaxSteps] = useState<number>(10);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentResult, setAgentResult] = useState<AgentResult | null>(null);
+  const [agentLiveSteps, setAgentLiveSteps] = useState<AgentStep[]>([]);
+
+  // 데이터셋(엑셀) 관련 상태
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
+  const [datasetRows, setDatasetRows] = useState<DatasetRow[]>([]);
+  const [datasetLoading, setDatasetLoading] = useState(false);
+  const [datasetAnalysis, setDatasetAnalysis] = useState<DatasetAnalysis | null>(null);
+  const [datasetQuestion, setDatasetQuestion] = useState<string>("");
+  const [datasetQAResult, setDatasetQAResult] = useState<DatasetQAResult | null>(null);
+  const [datasetQALoading, setDatasetQALoading] = useState(false);
+  const [datasetSearchQuery, setDatasetSearchQuery] = useState<string>("");
+  const [isDraggingExcel, setIsDraggingExcel] = useState(false);
+
   // 무한 스크롤 관련 상태
   const [memoOffset, setMemoOffset] = useState(0);
   const [hasMoreMemos, setHasMoreMemos] = useState(true);
@@ -212,6 +361,14 @@ function App() {
   ];
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const agentStepsRef = useRef<HTMLDivElement>(null);
+
+  // Agent 진행상황 자동 스크롤
+  useEffect(() => {
+    if (agentStepsRef.current && agentLiveSteps.length > 0) {
+      agentStepsRef.current.scrollTop = agentStepsRef.current.scrollHeight;
+    }
+  }, [agentLiveSteps]);
 
   useEffect(() => {
     const initApp = async () => {
@@ -240,7 +397,8 @@ function App() {
         loadMemos(),
         loadSchedules(),
         loadTodos(),
-        loadTransactions()
+        loadTransactions(),
+        loadDatasets()
       ]);
 
       // 스플래시 화면 페이드 아웃 (최소 1.5초 유지)
@@ -253,6 +411,16 @@ function App() {
     };
 
     initApp();
+  }, []);
+
+  // Agent 진행상황 이벤트 리스너
+  useEffect(() => {
+    const unlisten = listen<AgentStep>('agent-progress', (event) => {
+      setAgentLiveSteps(prev => [...prev, event.payload]);
+    });
+    return () => {
+      unlisten.then(f => f());
+    };
   }, []);
 
   const loadTransactions = async () => {
@@ -292,6 +460,142 @@ function App() {
       await invoke("delete_transaction", { id });
       await loadTransactions();
     } catch (e) { console.error(e); }
+  };
+
+  // ===== 데이터셋(엑셀) 관련 함수 =====
+
+  const loadDatasets = async () => {
+    try {
+      const list = await invoke<Dataset[]>("get_datasets");
+      setDatasets(list);
+    } catch (e) { console.error("Failed to load datasets:", e); }
+  };
+
+  const loadDatasetRows = async (datasetId: number, offset = 0, limit = 100) => {
+    try {
+      const rows = await invoke<DatasetRow[]>("get_dataset_rows", { datasetId, offset, limit });
+      setDatasetRows(rows);
+    } catch (e) { console.error("Failed to load dataset rows:", e); }
+  };
+
+  const handleExcelDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingExcel(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length === 0) return;
+
+    const file = files[0];
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+    if (!validExtensions.includes(ext)) {
+      showToast("지원되지 않는 파일 형식입니다. (xlsx, xls, csv만 가능)");
+      return;
+    }
+
+    setDatasetLoading(true);
+    try {
+      // 파일을 Base64로 변환
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        try {
+          const result = await invoke<{ success: boolean; dataset_id: number; name: string; columns: string[]; row_count: number; message: string }>(
+            "import_excel",
+            { fileData: base64, fileName: file.name }
+          );
+
+          showToast(`✅ ${result.message}`);
+          await loadDatasets();
+
+          // 새로 추가된 데이터셋 자동 선택
+          const newDataset = await invoke<Dataset>("get_dataset_detail", { id: result.dataset_id });
+          setSelectedDataset(newDataset);
+          await loadDatasetRows(result.dataset_id);
+        } catch (err) {
+          showToast(`❌ 임포트 실패: ${err}`);
+        } finally {
+          setDatasetLoading(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      showToast(`❌ 파일 읽기 실패: ${err}`);
+      setDatasetLoading(false);
+    }
+  };
+
+  const selectDataset = async (dataset: Dataset) => {
+    setSelectedDataset(dataset);
+    setDatasetAnalysis(null);
+    setDatasetQAResult(null);
+    setDatasetSearchQuery("");
+    await loadDatasetRows(dataset.id);
+  };
+
+  const analyzeDataset = async () => {
+    if (!selectedDataset) return;
+
+    setDatasetLoading(true);
+    try {
+      const result = await invoke<DatasetAnalysis>("analyze_dataset", { id: selectedDataset.id });
+      setDatasetAnalysis(result);
+    } catch (e) {
+      showToast(`❌ 분석 실패: ${e}`);
+    } finally {
+      setDatasetLoading(false);
+    }
+  };
+
+  const askDatasetQuestion = async () => {
+    if (!selectedDataset || !datasetQuestion.trim()) return;
+
+    setDatasetQALoading(true);
+    try {
+      const result = await invoke<DatasetQAResult>("query_dataset", {
+        id: selectedDataset.id,
+        question: datasetQuestion
+      });
+      setDatasetQAResult(result);
+    } catch (e) {
+      showToast(`❌ 질문 처리 실패: ${e}`);
+    } finally {
+      setDatasetQALoading(false);
+    }
+  };
+
+  const searchDataset = async () => {
+    if (!selectedDataset || !datasetSearchQuery.trim()) {
+      if (selectedDataset) {
+        await loadDatasetRows(selectedDataset.id);
+      }
+      return;
+    }
+
+    try {
+      const rows = await invoke<DatasetRow[]>("search_dataset", {
+        datasetId: selectedDataset.id,
+        query: datasetSearchQuery
+      });
+      setDatasetRows(rows);
+    } catch (e) {
+      console.error("Search failed:", e);
+    }
+  };
+
+  const deleteDataset = async (id: number) => {
+    if (!confirm("이 데이터셋을 삭제하시겠습니까?")) return;
+
+    try {
+      await invoke("delete_dataset", { id });
+      showToast("데이터셋이 삭제되었습니다");
+      setSelectedDataset(null);
+      setDatasetRows([]);
+      await loadDatasets();
+    } catch (e) {
+      showToast(`❌ 삭제 실패: ${e}`);
+    }
   };
 
   const installUpdate = async () => {
@@ -603,10 +907,13 @@ function App() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // 토스트 알림 표시
-  const showToast = (message: string, duration = 2000) => {
+  // 토스트 알림 표시 (에러는 더 오래 표시)
+  const showToast = (message: string, duration?: number) => {
+    // 에러 메시지는 8초, 일반 메시지는 2초
+    const isError = message.includes('❌') || message.includes('실패') || message.includes('에러') || message.includes('Error');
+    const actualDuration = duration ?? (isError ? 8000 : 2000);
     setToast(message);
-    setTimeout(() => setToast(null), duration);
+    setTimeout(() => setToast(null), actualDuration);
   };
 
   // 자동 저장 함수 (debounce)
@@ -724,6 +1031,15 @@ function App() {
       if (model) setAiModel(model);
       const copyMode = await invoke<string>("get_setting", { key: "attachment_copy_mode" });
       if (copyMode) setAttachmentCopyMode(copyMode);
+      // 검색 API 키 로드
+      const naverId = await invoke<string>("get_setting", { key: "naver_client_id" });
+      const naverSecret = await invoke<string>("get_setting", { key: "naver_client_secret" });
+      const googleKey = await invoke<string>("get_setting", { key: "google_search_api_key" });
+      const googleCx = await invoke<string>("get_setting", { key: "google_search_cx" });
+      if (naverId) setNaverClientId(naverId);
+      if (naverSecret) setNaverClientSecret(naverSecret);
+      if (googleKey) setGoogleSearchApiKey(googleKey);
+      if (googleCx) setGoogleSearchCx(googleCx);
     } catch (e) { console.error(e); }
   };
 
@@ -782,6 +1098,35 @@ function App() {
         setIsMaximized(true);
       }
     } catch (e) { console.error("toggleMaximize error:", e); }
+  };
+
+  // 리서치 실행
+  const handleResearch = async () => {
+    if (!researchQuery.trim()) return;
+    setResearchLoading(true);
+    setResearchResult(null);
+    setResearchProgress(null);
+
+    // 진행 상황 이벤트 리스너 등록
+    const unlisten = await listen<ResearchProgress>("research-progress", (event) => {
+      setResearchProgress(event.payload);
+    });
+
+    try {
+      const result = await invoke<ResearchResult>("run_research", { query: researchQuery });
+      setResearchResult(result);
+      if (result.memo_id) {
+        setToast("리서치 결과가 메모에 자동 저장되었습니다");
+        loadMemos(); // 메모 목록 새로고침
+      }
+    } catch (e) {
+      console.error("Research error:", e);
+      setToast(`리서치 실패: ${e}`);
+    } finally {
+      unlisten(); // 리스너 해제
+      setResearchLoading(false);
+      setResearchProgress(null);
+    }
   };
 
   // 사이드바 리사이즈 핸들러
@@ -1400,12 +1745,16 @@ function App() {
     <div className="h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
       {/* ===== TOP NAV BAR - macOS Native Style ===== */}
       <div
-        className="h-10 flex items-center justify-between px-3 select-none"
+        className="flex flex-col select-none"
         style={{
           background: 'var(--bg-secondary)',
           borderBottom: '1px solid var(--border-light)',
-          WebkitAppRegion: 'drag'
         } as React.CSSProperties}
+      >
+      {/* 첫 번째 줄 - 기본 네비게이션 */}
+      <div
+        className="h-10 flex items-center justify-between px-3"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {!minimized && (
@@ -1445,13 +1794,12 @@ function App() {
             ))}
           </div>
 
-          {/* 그룹 2: 일정, 할일, 가계부, 폴더정리 */}
+          {/* 그룹 2: 일정, 할일, 가계부 */}
           <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', marginRight: '12px', border: '1px solid var(--border-light)' }}>
             {[
               { id: "schedule" as Tab, label: schedules.length > 0 ? `일정 (${schedules.length})` : '일정' },
               { id: "todo" as Tab, label: todos.filter(t => !t.completed).length > 0 ? `할일 (${todos.filter(t => !t.completed).length})` : '할일' },
               { id: "ledger" as Tab, label: transactions.length > 0 ? `가계부 (${transactions.length})` : '가계부' },
-              { id: "organize" as Tab, label: '폴더 정리' },
             ].map((item) => (
               <button
                 key={item.id}
@@ -1540,6 +1888,45 @@ function App() {
             {minimized ? '↗' : '↙'}
           </button>
         </div>
+      </div>
+
+      {/* 두 번째 줄 - 도구 (폴더 정리, 리서치) */}
+      {!minimized && (
+        <div
+          className="h-8 flex items-center px-3 gap-2"
+          style={{ background: 'var(--bg-tertiary)', borderTop: '1px solid var(--border-light)' }}
+        >
+          <span style={{ fontSize: '10px', color: 'var(--text-secondary)', marginRight: '4px' }}>도구:</span>
+          <div className="flex gap-1">
+            {[
+              { id: "organize" as Tab, label: '📁 폴더 정리' },
+              { id: "consulting" as Tab, label: '🗂️ 파일 컨설팅' },
+              { id: "research" as Tab, label: '🔬 리서치' },
+              // { id: "collect" as Tab, label: '🗃️ 데이터수집' },
+              // { id: "extract" as Tab, label: '🧲 추출' },
+              // { id: "agent" as Tab, label: '🤖 에이전트' },
+              // { id: "data" as Tab, label: '📊 데이터' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
+                className="btn"
+                style={{
+                  background: tab === item.id && !selectedMemo ? 'var(--accent)' : 'var(--bg-secondary)',
+                  color: tab === item.id && !selectedMemo ? 'var(--accent-text)' : 'var(--text)',
+                  fontWeight: tab === item.id && !selectedMemo ? 600 : 400,
+                  padding: '2px 10px',
+                  fontSize: '12px',
+                  borderRadius: '4px',
+                  border: '1px solid var(--border-light)'
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       </div>
 
       {/* ===== UPDATE BANNER ===== */}
@@ -2897,6 +3284,1334 @@ function App() {
             </div>
           )}
 
+          {/* ===== RESEARCH (자동 리서치) ===== */}
+          {tab === "research" && !selectedMemo && (
+            <div className="space-y-4">
+              {/* 검색 입력 */}
+              <div className="card" style={{ padding: '16px' }}>
+                <div className="card-header" style={{ marginBottom: '12px' }}>
+                  <span style={{ fontSize: '16px', marginRight: '8px' }}>🔬</span>
+                  자동 리서치
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                  검색어를 입력하면 AI가 네이버/구글에서 정보를 수집하고 분석 리포트를 생성합니다.
+                </p>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={researchQuery}
+                    onChange={(e) => setResearchQuery(e.target.value)}
+                    placeholder="리서치할 주제를 입력하세요..."
+                    className="input"
+                    style={{ flex: 1, fontSize: '13px' }}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && researchQuery.trim() && !researchLoading) {
+                        handleResearch();
+                      }
+                    }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleResearch}
+                    disabled={!researchQuery.trim() || researchLoading}
+                    style={{ minWidth: '100px' }}
+                  >
+                    {researchLoading ? '분석 중...' : '🔍 리서치 시작'}
+                  </button>
+                </div>
+                {/* API 키 상태 표시 */}
+                <div style={{ marginTop: '12px', display: 'flex', gap: '12px', fontSize: '11px' }}>
+                  <span style={{ color: naverClientId ? 'var(--success)' : 'var(--text-secondary)' }}>
+                    {naverClientId ? '✓' : '○'} 네이버 API
+                  </span>
+                  <span style={{ color: googleSearchApiKey ? 'var(--success)' : 'var(--text-secondary)' }}>
+                    {googleSearchApiKey ? '✓' : '○'} Google API
+                  </span>
+                  {!naverClientId && !googleSearchApiKey && (
+                    <span
+                      style={{ color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={() => setTab('settings')}
+                    >
+                      → 설정에서 API 키 추가
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 로딩 상태 - 실시간 진행 상황 */}
+              {researchLoading && (
+                <div className="card" style={{ padding: '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                    <div style={{ fontSize: '32px', animation: 'pulse 2s infinite' }}>🔬</div>
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: 600 }}>
+                        AI 에이전트 리서치 중...
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        {researchProgress ? `${researchProgress.step}/${researchProgress.total_steps} 단계` : '준비 중...'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 진행률 바 */}
+                  <div style={{ marginBottom: '16px', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{
+                      width: researchProgress ? `${(researchProgress.step / researchProgress.total_steps) * 100}%` : '5%',
+                      height: '100%',
+                      background: '#3b82f6',
+                      transition: 'width 0.3s ease',
+                      borderRadius: '3px'
+                    }} />
+                  </div>
+
+                  {/* 내부 투두리스트 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {researchProgress?.tasks.map((task) => (
+                      <div
+                        key={task.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 12px',
+                          background: task.status === 'in_progress' ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-tertiary)',
+                          borderRadius: '6px',
+                          border: task.status === 'in_progress' ? '1px solid #3b82f6' : '1px solid transparent',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        {/* 상태 아이콘 */}
+                        <div style={{ fontSize: '16px', width: '24px', textAlign: 'center' }}>
+                          {task.status === 'completed' && '✅'}
+                          {task.status === 'in_progress' && (
+                            <div style={{ animation: 'spin 1s linear infinite' }}>⏳</div>
+                          )}
+                          {task.status === 'pending' && '⬜'}
+                          {task.status === 'failed' && '❌'}
+                        </div>
+
+                        {/* 태스크 정보 */}
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontSize: '13px',
+                            fontWeight: task.status === 'in_progress' ? 600 : 400,
+                            color: task.status === 'completed' ? 'var(--text-secondary)' :
+                                   task.status === 'in_progress' ? 'var(--text-primary)' :
+                                   'var(--text-tertiary)'
+                          }}>
+                            {task.description}
+                          </div>
+                        </div>
+
+                        {/* 태스크 타입 배지 */}
+                        <div style={{
+                          padding: '2px 8px',
+                          background: task.status === 'in_progress' ? '#3b82f6' : 'var(--bg-secondary)',
+                          color: task.status === 'in_progress' ? 'white' : 'var(--text-secondary)',
+                          borderRadius: '4px',
+                          fontSize: '10px',
+                          fontWeight: 500
+                        }}>
+                          {task.task_type === 'plan' && '계획'}
+                          {task.task_type === 'search' && '검색'}
+                          {task.task_type === 'select' && '선택'}
+                          {task.task_type === 'crawl' && '크롤링'}
+                          {task.task_type === 'analyze' && '분석'}
+                          {task.task_type === 'summarize' && '요약'}
+                          {task.task_type === 'compile' && '작성'}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 아직 진행 상황이 없을 때 */}
+                    {!researchProgress && (
+                      <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                        AI 에이전트 초기화 중...
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 리서치 결과 - 프로페셔널 디자인 */}
+              {researchResult && !researchLoading && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                  {/* 헤더 - 그라데이션 배경 */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: '12px',
+                    padding: '20px 24px',
+                    color: 'white',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{ position: 'absolute', top: 0, right: 0, width: '200px', height: '200px', background: 'rgba(255,255,255,0.1)', borderRadius: '50%', transform: 'translate(50%, -50%)' }} />
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                      <div style={{ fontSize: '11px', opacity: 0.9, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                        AI Research Report
+                      </div>
+                      <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 12px 0', lineHeight: 1.3 }}>
+                        {researchResult.query}
+                      </h2>
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: '12px', background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '20px' }}>
+                          🔍 {researchResult.search_engines_used.join(' + ')}
+                        </span>
+                        <span style={{ fontSize: '12px', background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '20px' }}>
+                          📄 {researchResult.sources.length}개 출처
+                        </span>
+                        {researchResult.memo_id && (
+                          <span style={{ fontSize: '12px', background: 'rgba(34, 197, 94, 0.3)', padding: '4px 10px', borderRadius: '20px' }}>
+                            ✓ 저장됨
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 액션 바 - 복사 버튼들 */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '8px',
+                    padding: '12px 16px',
+                    background: 'var(--bg-secondary)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <button
+                      onClick={() => {
+                        const fullText = `# ${researchResult.query}\n\n## 요약\n${researchResult.summary}\n\n## 핵심 포인트\n${researchResult.key_points.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\n## 상세 리포트\n${researchResult.full_report}\n\n## 출처\n${researchResult.sources.map(s => `- ${s.title} (${s.source})\n  ${s.link}`).join('\n')}\n\n## 출처별 상세 요약\n${researchResult.source_summaries?.map((ss, i) => `[${i + 1}] ${ss.title}\n출처: ${ss.source}\n${ss.summary}\n${ss.url}`).join('\n\n') || '없음'}`;
+                        navigator.clipboard.writeText(fullText);
+                        showToast('전체 리포트가 복사되었습니다');
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      📋 전체 복사
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(researchResult.summary);
+                        showToast('요약이 복사되었습니다');
+                      }}
+                      style={{
+                        padding: '10px 16px',
+                        background: 'var(--bg-tertiary)',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      요약 복사
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(researchResult.full_report);
+                        showToast('리포트가 복사되었습니다');
+                      }}
+                      style={{
+                        padding: '10px 16px',
+                        background: 'var(--bg-tertiary)',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      리포트 복사
+                    </button>
+                  </div>
+
+                  {/* 요약 카드 - 하이라이트 */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    border: '1px solid rgba(102, 126, 234, 0.2)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '20px' }}>💡</span>
+                      <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>핵심 요약</span>
+                    </div>
+                    <p style={{
+                      fontSize: '14px',
+                      lineHeight: '1.8',
+                      color: 'var(--text-primary)',
+                      margin: 0,
+                      fontWeight: 500
+                    }}>
+                      {researchResult.summary}
+                    </p>
+                  </div>
+
+                  {/* 핵심 포인트 - 번호 카드 */}
+                  <div style={{
+                    background: 'var(--bg-secondary)',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                      <span style={{ fontSize: '20px' }}>🎯</span>
+                      <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>핵심 포인트</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: 'auto' }}>
+                        {researchResult.key_points.length}개 발견
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {researchResult.key_points.map((point, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            gap: '12px',
+                            padding: '12px',
+                            background: 'var(--bg-tertiary)',
+                            borderRadius: '8px',
+                            alignItems: 'flex-start'
+                          }}
+                        >
+                          <div style={{
+                            minWidth: '28px',
+                            height: '28px',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '12px',
+                            fontWeight: 700
+                          }}>
+                            {i + 1}
+                          </div>
+                          <p style={{
+                            fontSize: '13px',
+                            lineHeight: '1.6',
+                            color: 'var(--text-primary)',
+                            margin: 0,
+                            flex: 1
+                          }}>
+                            {point}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 상세 리포트 */}
+                  <div style={{
+                    background: 'var(--bg-secondary)',
+                    borderRadius: '12px',
+                    padding: '24px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                      <span style={{ fontSize: '20px' }}>📝</span>
+                      <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>상세 분석 리포트</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: 'auto' }}>
+                        {researchResult.full_report.length.toLocaleString()}자
+                      </span>
+                    </div>
+                    <div style={{
+                      fontSize: '14px',
+                      lineHeight: '2',
+                      color: 'var(--text-primary)',
+                      whiteSpace: 'pre-wrap',
+                      background: 'var(--bg-tertiary)',
+                      padding: '20px',
+                      borderRadius: '8px',
+                      maxHeight: '500px',
+                      overflow: 'auto'
+                    }}>
+                      {researchResult.full_report}
+                    </div>
+                  </div>
+
+                  {/* 출처 목록 - 그리드 */}
+                  <div style={{
+                    background: 'var(--bg-secondary)',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                      <span style={{ fontSize: '20px' }}>🔗</span>
+                      <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>참고 출처</span>
+                      <span style={{
+                        fontSize: '11px',
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        color: 'white',
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        marginLeft: '8px'
+                      }}>
+                        {researchResult.sources.length}개
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+                      {researchResult.sources.slice(0, 12).map((source, i) => (
+                        <a
+                          key={i}
+                          href={source.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            padding: '12px',
+                            background: 'var(--bg-tertiary)',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            border: '1px solid transparent',
+                            transition: 'all 0.2s',
+                            display: 'block'
+                          }}
+                          onMouseOver={(e) => { e.currentTarget.style.borderColor = '#667eea'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                          onMouseOut={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                        >
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px', lineHeight: 1.4 }}>
+                            {source.title.length > 60 ? source.title.slice(0, 60) + '...' : source.title}
+                          </div>
+                          <div style={{
+                            fontSize: '10px',
+                            color: '#667eea',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            <span style={{
+                              background: 'rgba(102, 126, 234, 0.1)',
+                              padding: '2px 6px',
+                              borderRadius: '4px'
+                            }}>
+                              {source.source}
+                            </span>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                    {researchResult.sources.length > 12 && (
+                      <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        +{researchResult.sources.length - 12}개 더 있음 (메모에서 전체 확인)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 별첨: 출처별 상세 요약 */}
+                  {researchResult.source_summaries && researchResult.source_summaries.length > 0 && (
+                    <div style={{
+                      background: 'var(--bg-secondary)',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      border: '1px solid var(--border)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                        <span style={{ fontSize: '20px' }}>📚</span>
+                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>출처별 상세 분석</span>
+                        <span style={{
+                          fontSize: '11px',
+                          background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                          color: 'white',
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          marginLeft: '8px'
+                        }}>
+                          별첨 {researchResult.source_summaries.length}개
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                        AI가 각 출처의 내용을 개별적으로 분석하고 요약한 심층 자료입니다.
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {researchResult.source_summaries.map((ss, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              padding: '16px',
+                              background: 'var(--bg-tertiary)',
+                              borderRadius: '10px',
+                              borderLeft: '4px solid',
+                              borderImage: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%) 1'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
+                              <div style={{
+                                minWidth: '32px',
+                                height: '32px',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'white',
+                                fontSize: '13px',
+                                fontWeight: 700
+                              }}>
+                                {i + 1}
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', marginBottom: '4px', lineHeight: 1.4 }}>
+                                  {ss.title.length > 70 ? ss.title.slice(0, 70) + '...' : ss.title}
+                                </div>
+                                <div style={{
+                                  fontSize: '10px',
+                                  color: '#667eea',
+                                  display: 'inline-block',
+                                  background: 'rgba(102, 126, 234, 0.1)',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px'
+                                }}>
+                                  {ss.source}
+                                </div>
+                              </div>
+                            </div>
+                            <p style={{
+                              fontSize: '13px',
+                              lineHeight: '1.8',
+                              color: 'var(--text-secondary)',
+                              margin: '0 0 10px 0',
+                              paddingLeft: '44px'
+                            }}>
+                              {ss.summary}
+                            </p>
+                            <div style={{ paddingLeft: '44px' }}>
+                              <a
+                                href={ss.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  fontSize: '11px',
+                                  color: '#667eea',
+                                  textDecoration: 'none',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                원문 보기 →
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 푸터 - 통계 정보 */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    gap: '24px',
+                    padding: '16px',
+                    background: 'var(--bg-tertiary)',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    color: 'var(--text-secondary)'
+                  }}>
+                    <span>🤖 Gemini 3.0 Pro</span>
+                    <span>📊 토큰: {(researchResult.input_tokens + researchResult.output_tokens).toLocaleString()}</span>
+                    <span>💰 비용: ${researchResult.cost_usd.toFixed(4)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== COLLECT (데이터 수집) ===== */}
+          {/* {tab === "collect" && !selectedMemo && (
+            <DataCollection showToast={showToast} />
+          )} */}
+
+          {/* ===== CONSULTING (파일 컨설팅) ===== */}
+          {tab === "consulting" && !selectedMemo && (
+            <FileConsulting />
+          )}
+
+          {/* ===== EXTRACT (AI 데이터 추출) ===== */}
+          {tab === "extract" && !selectedMemo && (
+            <div className="space-y-3">
+              <div className="card" style={{ padding: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>
+                  🧲 AI 데이터 추출
+                </h3>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                  웹페이지에서 원하는 데이터만 AI가 구조화하여 추출합니다.
+                </p>
+
+                {/* URL 입력 */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>
+                    URL
+                  </label>
+                  <input
+                    type="text"
+                    value={extractUrl}
+                    onChange={(e) => setExtractUrl(e.target.value)}
+                    placeholder="https://example.com/page"
+                    className="input"
+                    style={{ fontSize: '12px', padding: '10px' }}
+                  />
+                </div>
+
+                {/* 스키마 입력 */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>
+                    추출할 데이터 (자연어로 설명)
+                  </label>
+                  <textarea
+                    value={extractSchema}
+                    onChange={(e) => setExtractSchema(e.target.value)}
+                    placeholder={`예시:
+- 상품명, 가격, 평점, 리뷰 수
+- 기사 제목, 작성자, 날짜, 본문 요약
+- 테이블의 모든 데이터를 JSON 배열로`}
+                    className="input"
+                    style={{ fontSize: '12px', padding: '10px', minHeight: '100px', resize: 'vertical' }}
+                  />
+                </div>
+
+                {/* 추출 버튼 */}
+                <button
+                  onClick={async () => {
+                    if (!extractUrl || !extractSchema) {
+                      showToast("URL과 추출할 데이터를 입력하세요");
+                      return;
+                    }
+                    setExtractLoading(true);
+                    setExtractResult(null);
+                    try {
+                      const result = await invoke<{url: string; data: unknown; input_tokens: number; output_tokens: number; cost_usd: number}>("extract_from_url", {
+                        url: extractUrl,
+                        schema: extractSchema
+                      });
+                      setExtractResult(result);
+                      showToast("✅ 데이터 추출 완료");
+                    } catch (e) {
+                      showToast(`❌ ${e}`);
+                    } finally {
+                      setExtractLoading(false);
+                    }
+                  }}
+                  disabled={extractLoading || !extractUrl || !extractSchema}
+                  className="btn btn-primary"
+                  style={{ width: '100%', padding: '12px', fontSize: '13px' }}
+                >
+                  {extractLoading ? '추출 중...' : '🧲 데이터 추출'}
+                </button>
+              </div>
+
+              {/* 추출 결과 */}
+              {extractResult && (
+                <div className="card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h4 style={{ fontSize: '13px', fontWeight: 600 }}>추출 결과</h4>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(extractResult.data, null, 2));
+                        showToast("JSON 복사됨");
+                      }}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '10px', padding: '4px 8px' }}
+                    >
+                      📋 복사
+                    </button>
+                  </div>
+                  <pre style={{
+                    background: 'var(--bg-tertiary)',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    overflow: 'auto',
+                    maxHeight: '400px',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}>
+                    {JSON.stringify(extractResult.data, null, 2)}
+                  </pre>
+                  <div style={{ marginTop: '12px', fontSize: '10px', color: 'var(--text-muted)', display: 'flex', gap: '12px' }}>
+                    <span>📥 입력: {extractResult.input_tokens.toLocaleString()} 토큰</span>
+                    <span>📤 출력: {extractResult.output_tokens.toLocaleString()} 토큰</span>
+                    <span>💰 비용: ${extractResult.cost_usd.toFixed(4)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 사용 예시 */}
+              <div className="card" style={{ padding: '12px', background: 'var(--bg-tertiary)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px' }}>💡 사용 예시</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', lineHeight: '1.8' }}>
+                  <div><strong>쇼핑몰:</strong> "상품명, 가격, 할인율, 리뷰 수 추출"</div>
+                  <div><strong>뉴스:</strong> "제목, 작성일, 요약 추출"</div>
+                  <div><strong>부동산:</strong> "매물 목록에서 주소, 가격, 면적, 층수 추출"</div>
+                  <div><strong>채용:</strong> "회사명, 포지션, 연봉, 자격요건 추출"</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===== AGENT (AI 브라우저 에이전트) ===== */}
+          {tab === "agent" && !selectedMemo && (
+            <div className="space-y-3">
+              <div className="card" style={{ padding: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>
+                  🤖 AI 브라우저 에이전트
+                </h3>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                  목표를 입력하면 AI가 자동으로 브라우저를 조작하여 작업을 수행합니다.
+                </p>
+
+                {/* 목표 입력 */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>
+                    목표
+                  </label>
+                  <textarea
+                    value={agentGoal}
+                    onChange={(e) => setAgentGoal(e.target.value)}
+                    placeholder={`예시:
+- 네이버에서 "아이폰 16" 검색하고 최저가 찾기
+- 구글에서 "Claude AI" 검색하고 최신 뉴스 5개 요약
+- 네이버 쇼핑에서 "에어팟" 검색 후 평점 높은 상품 3개 추출`}
+                    className="input"
+                    style={{ fontSize: '12px', padding: '10px', minHeight: '100px', resize: 'vertical' }}
+                  />
+                </div>
+
+                {/* 시작 URL */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>
+                    시작 URL
+                  </label>
+                  <input
+                    type="text"
+                    value={agentStartUrl}
+                    onChange={(e) => setAgentStartUrl(e.target.value)}
+                    placeholder="https://www.naver.com"
+                    className="input"
+                    style={{ fontSize: '12px', padding: '10px' }}
+                  />
+                </div>
+
+                {/* 최대 단계 */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>
+                    최대 단계 수: {agentMaxSteps}
+                  </label>
+                  <input
+                    type="range"
+                    min="3"
+                    max="15"
+                    value={agentMaxSteps}
+                    onChange={(e) => setAgentMaxSteps(parseInt(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>빠름 (3)</span>
+                    <span>기본 (10)</span>
+                    <span>상세 (15)</span>
+                  </div>
+                </div>
+
+                {/* 실행 버튼 */}
+                <button
+                  onClick={async () => {
+                    if (!agentGoal) {
+                      showToast("목표를 입력하세요");
+                      return;
+                    }
+                    setAgentLoading(true);
+                    setAgentResult(null);
+                    setAgentLiveSteps([]);
+                    try {
+                      const result = await invoke("run_browser_agent", {
+                        goal: agentGoal,
+                        startUrl: agentStartUrl,
+                        maxSteps: agentMaxSteps
+                      }) as AgentResult;
+                      setAgentResult(result);
+                      setAgentLiveSteps([]);
+                      showToast(result.success ? "✅ 에이전트 작업 완료" : "⚠️ 에이전트가 최대 단계에 도달");
+                    } catch (e) {
+                      showToast(`❌ ${e}`);
+                    } finally {
+                      setAgentLoading(false);
+                    }
+                  }}
+                  disabled={agentLoading || !agentGoal}
+                  className="btn btn-primary"
+                  style={{ width: '100%', padding: '12px', fontSize: '13px' }}
+                >
+                  {agentLoading ? '🤖 에이전트 실행 중...' : '🚀 에이전트 시작'}
+                </button>
+              </div>
+
+              {/* 실시간 진행상황 */}
+              {agentLoading && agentLiveSteps.length > 0 && (
+                <div className="card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h4 style={{ fontSize: '13px', fontWeight: 600 }}>
+                      🔄 실행 중...
+                    </h4>
+                    <span style={{
+                      fontSize: '10px',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      background: 'rgba(102, 126, 234, 0.2)',
+                      color: '#667eea'
+                    }}>
+                      {agentLiveSteps.length}단계 진행
+                    </span>
+                  </div>
+                  <div
+                    ref={agentStepsRef}
+                    style={{
+                      background: 'var(--bg-tertiary)',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      maxHeight: '400px',
+                      overflow: 'auto'
+                    }}
+                  >
+                    {agentLiveSteps.map((step: AgentStep, idx: number) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '10px',
+                          borderLeft: '3px solid',
+                          borderLeftColor: step.result.includes('실패') ? '#ef4444' :
+                                          step.action_type === 'Done' ? '#10b981' : '#667eea',
+                          marginBottom: '10px',
+                          background: idx === agentLiveSteps.length - 1 ? 'rgba(102, 126, 234, 0.1)' : 'var(--bg-secondary)',
+                          borderRadius: '0 8px 8px 0',
+                          animation: idx === agentLiveSteps.length - 1 ? 'fadeIn 0.3s ease-in' : 'none'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            background: idx === agentLiveSteps.length - 1 ? '#667eea' : 'rgba(102, 126, 234, 0.2)',
+                            color: idx === agentLiveSteps.length - 1 ? 'white' : '#667eea'
+                          }}>
+                            Step {step.step_number}
+                          </span>
+                          <span style={{ fontSize: '12px', fontWeight: 600 }}>
+                            {step.action_type === 'Navigate' && '🌐 이동'}
+                            {step.action_type === 'Click' && '👆 클릭'}
+                            {step.action_type === 'Type' && '⌨️ 입력'}
+                            {step.action_type === 'Scroll' && '📜 스크롤'}
+                            {step.action_type === 'Wait' && '⏳ 대기'}
+                            {step.action_type === 'Extract' && '📦 추출'}
+                            {step.action_type === 'Done' && '✅ 완료'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                          💭 {step.reason}
+                        </div>
+                        {step.selector && (
+                          <div style={{ fontSize: '10px', color: '#667eea', fontFamily: 'monospace', marginBottom: '4px' }}>
+                            🎯 대상: {step.selector}
+                          </div>
+                        )}
+                        {step.value && (
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace', marginBottom: '4px' }}>
+                            📝 값: {step.value.substring(0, 100)}{step.value.length > 100 ? '...' : ''}
+                          </div>
+                        )}
+                        <div style={{
+                          fontSize: '10px',
+                          fontFamily: 'monospace',
+                          padding: '6px 8px',
+                          background: step.result.includes('실패') ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                          borderRadius: '4px',
+                          color: step.result.includes('실패') ? '#ef4444' : '#10b981'
+                        }}>
+                          ➜ {step.result}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 실행 결과 */}
+              {agentResult && (
+                <div className="card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h4 style={{ fontSize: '13px', fontWeight: 600 }}>
+                      {agentResult.success ? '✅ 작업 완료' : '⚠️ 최대 단계 도달'}
+                    </h4>
+                    <span style={{
+                      fontSize: '10px',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      background: agentResult.success ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                      color: agentResult.success ? '#10b981' : '#f59e0b'
+                    }}>
+                      {agentResult.steps.length}단계 완료
+                    </span>
+                  </div>
+
+                  {/* 단계별 로그 */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px' }}>실행 로그</div>
+                    <div style={{
+                      background: 'var(--bg-tertiary)',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      maxHeight: '300px',
+                      overflow: 'auto'
+                    }}>
+                      {agentResult.steps.map((step: AgentStep, idx: number) => (
+                        <div
+                          key={idx}
+                          style={{
+                            padding: '8px',
+                            borderLeft: '2px solid',
+                            borderLeftColor: step.action_type === 'Done' ? '#10b981' : '#667eea',
+                            marginBottom: '8px',
+                            background: 'var(--bg-secondary)',
+                            borderRadius: '0 6px 6px 0'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: 'rgba(102, 126, 234, 0.2)',
+                              color: '#667eea'
+                            }}>
+                              Step {step.step_number}
+                            </span>
+                            <span style={{ fontSize: '11px', fontWeight: 600 }}>
+                              {step.action_type === 'Navigate' && '🌐 이동'}
+                              {step.action_type === 'Click' && '👆 클릭'}
+                              {step.action_type === 'Type' && '⌨️ 입력'}
+                              {step.action_type === 'Scroll' && '📜 스크롤'}
+                              {step.action_type === 'Wait' && '⏳ 대기'}
+                              {step.action_type === 'Extract' && '📦 추출'}
+                              {step.action_type === 'Done' && '✅ 완료'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>
+                            {step.reason}
+                          </div>
+                          {step.value && (
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                              → {step.value.substring(0, 100)}{step.value.length > 100 ? '...' : ''}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 최종 결과 데이터 */}
+                  {agentResult.final_data && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 600 }}>결과 데이터</span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(JSON.stringify(agentResult.final_data, null, 2));
+                            showToast("JSON 복사됨");
+                          }}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '10px', padding: '4px 8px' }}
+                        >
+                          📋 복사
+                        </button>
+                      </div>
+                      <pre style={{
+                        background: 'var(--bg-tertiary)',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        overflow: 'auto',
+                        maxHeight: '200px',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}>
+                        {JSON.stringify(agentResult.final_data, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* 비용 정보 */}
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'flex', gap: '12px' }}>
+                    <span>📥 입력: {agentResult.total_input_tokens.toLocaleString()} 토큰</span>
+                    <span>📤 출력: {agentResult.total_output_tokens.toLocaleString()} 토큰</span>
+                    <span>💰 비용: ${agentResult.total_cost_usd.toFixed(4)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 사용 안내 */}
+              <div className="card" style={{ padding: '12px', background: 'var(--bg-tertiary)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px' }}>💡 사용 팁</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', lineHeight: '1.8' }}>
+                  <div><strong>검색:</strong> "네이버에서 [키워드] 검색하고 결과 정리"</div>
+                  <div><strong>가격비교:</strong> "네이버 쇼핑에서 [상품] 최저가 찾기"</div>
+                  <div><strong>정보수집:</strong> "위키백과에서 [주제] 찾아서 요약"</div>
+                  <div style={{ marginTop: '8px', color: 'var(--text-muted)' }}>
+                    ⚠️ 로그인이 필요한 작업은 지원하지 않습니다
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===== DATA (데이터셋/엑셀) ===== */}
+          {tab === "data" && !selectedMemo && (
+            <div className="space-y-3">
+              {/* 드래그 앤 드롭 영역 */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDraggingExcel(true); }}
+                onDragLeave={() => setIsDraggingExcel(false)}
+                onDrop={handleExcelDrop}
+                style={{
+                  padding: '24px',
+                  border: `2px dashed ${isDraggingExcel ? '#667eea' : 'var(--border)'}`,
+                  borderRadius: '12px',
+                  textAlign: 'center',
+                  background: isDraggingExcel ? 'rgba(102, 126, 234, 0.1)' : 'var(--bg-secondary)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {datasetLoading ? (
+                  <div style={{ color: 'var(--text-secondary)' }}>
+                    <span style={{ fontSize: '24px', marginBottom: '8px', display: 'block' }}>⏳</span>
+                    <span style={{ fontSize: '13px' }}>엑셀 파일 처리 중...</span>
+                  </div>
+                ) : (
+                  <>
+                    <span style={{ fontSize: '32px', marginBottom: '8px', display: 'block' }}>📊</span>
+                    <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                      엑셀 파일을 드래그 앤 드롭하세요
+                    </p>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      .xlsx, .xls, .csv 파일 지원
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* 데이터셋 목록 */}
+              {datasets.length > 0 && (
+                <div className="card" style={{ padding: '12px' }}>
+                  <div className="card-header" style={{ fontSize: '11px', marginBottom: '8px', paddingBottom: '8px' }}>
+                    저장된 데이터셋 ({datasets.length}개)
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {datasets.map((ds) => (
+                      <div
+                        key={ds.id}
+                        onClick={() => selectDataset(ds)}
+                        style={{
+                          padding: '10px 12px',
+                          background: selectedDataset?.id === ds.id ? 'rgba(102, 126, 234, 0.1)' : 'var(--bg-tertiary)',
+                          border: selectedDataset?.id === ds.id ? '1px solid #667eea' : '1px solid transparent',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>{ds.name}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            {ds.row_count}행 × {ds.columns.length}열
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteDataset(ds.id); }}
+                          style={{ padding: '4px 8px', fontSize: '11px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 선택된 데이터셋 상세 */}
+              {selectedDataset && (
+                <>
+                  {/* 데이터셋 헤더 */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: '12px',
+                    padding: '16px 20px',
+                    color: 'white'
+                  }}>
+                    <div style={{ fontSize: '11px', opacity: 0.9, marginBottom: '4px' }}>데이터셋</div>
+                    <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>{selectedDataset.name}</h3>
+                    <div style={{ fontSize: '12px', marginTop: '8px', display: 'flex', gap: '12px' }}>
+                      <span style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '4px' }}>
+                        📊 {selectedDataset.row_count.toLocaleString()}행
+                      </span>
+                      <span style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '4px' }}>
+                        📋 {selectedDataset.columns.length}열
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 검색 및 필터 */}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={datasetSearchQuery}
+                      onChange={(e) => setDatasetSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && searchDataset()}
+                      placeholder="데이터 검색..."
+                      className="input"
+                      style={{ flex: 1, fontSize: '12px', padding: '8px 12px' }}
+                    />
+                    <button
+                      onClick={searchDataset}
+                      className="btn"
+                      style={{ padding: '8px 16px', fontSize: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                    >
+                      🔍 검색
+                    </button>
+                  </div>
+
+                  {/* 데이터 테이블 */}
+                  <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-tertiary)' }}>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>#</th>
+                            {selectedDataset.columns.map((col, i) => (
+                              <th key={i} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+                                {col}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {datasetRows.slice(0, 50).map((row, rowIdx) => (
+                            <tr key={row.id} style={{ background: rowIdx % 2 === 0 ? 'var(--bg-secondary)' : 'var(--bg-tertiary)' }}>
+                              <td style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-light)', color: 'var(--text-secondary)' }}>{row.row_index + 1}</td>
+                              {row.data.map((cell, cellIdx) => (
+                                <td key={cellIdx} style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-light)', whiteSpace: 'nowrap', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {datasetRows.length > 50 && (
+                      <div style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--bg-tertiary)' }}>
+                        +{datasetRows.length - 50}개 더 있음
+                      </div>
+                    )}
+                  </div>
+
+                  {/* AI 분석 섹션 */}
+                  <div className="card" style={{ padding: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '14px' }}>🤖 AI 데이터 분석</span>
+                      <button
+                        onClick={analyzeDataset}
+                        disabled={datasetLoading}
+                        style={{
+                          padding: '8px 16px',
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: datasetLoading ? 'not-allowed' : 'pointer',
+                          opacity: datasetLoading ? 0.7 : 1
+                        }}
+                      >
+                        {datasetLoading ? '분석 중...' : '분석 실행'}
+                      </button>
+                    </div>
+
+                    {datasetAnalysis && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {/* 요약 */}
+                        <div style={{ padding: '12px', background: 'rgba(102, 126, 234, 0.1)', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: '#667eea' }}>💡 요약</div>
+                          <p style={{ fontSize: '13px', lineHeight: 1.6, margin: 0 }}>{datasetAnalysis.summary}</p>
+                        </div>
+
+                        {/* 통계 */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px' }}>
+                          {datasetAnalysis.statistics.map((stat, i) => (
+                            <div key={i} style={{ padding: '10px', background: 'var(--bg-tertiary)', borderRadius: '6px', textAlign: 'center' }}>
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{stat.label}</div>
+                              <div style={{ fontSize: '14px', fontWeight: 600 }}>{stat.value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* 인사이트 */}
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px' }}>🎯 인사이트</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {datasetAnalysis.insights.map((insight, i) => (
+                              <div key={i} style={{ padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '12px', display: 'flex', gap: '8px' }}>
+                                <span style={{ color: '#667eea', fontWeight: 600 }}>{i + 1}.</span>
+                                <span>{insight}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 차트 */}
+                        {datasetAnalysis.chart_data && (
+                          <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '12px' }}>📈 {datasetAnalysis.chart_data.title}</div>
+                            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '120px' }}>
+                              {datasetAnalysis.chart_data.values.map((value, i) => {
+                                const maxVal = Math.max(...datasetAnalysis.chart_data!.values);
+                                const height = maxVal > 0 ? (value / maxVal) * 100 : 0;
+                                return (
+                                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                    <div
+                                      style={{
+                                        width: '100%',
+                                        height: `${height}px`,
+                                        background: 'linear-gradient(180deg, #667eea 0%, #764ba2 100%)',
+                                        borderRadius: '4px 4px 0 0',
+                                        minHeight: '4px'
+                                      }}
+                                    />
+                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '60px' }}>
+                                      {datasetAnalysis.chart_data!.labels[i]}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 비용 정보 */}
+                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textAlign: 'right' }}>
+                          토큰: {(datasetAnalysis.input_tokens + datasetAnalysis.output_tokens).toLocaleString()} | 비용: ${datasetAnalysis.cost_usd.toFixed(4)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* AI Q&A 섹션 (RAG) */}
+                  <div className="card" style={{ padding: '16px' }}>
+                    <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '12px' }}>💬 데이터에 질문하기 (RAG)</div>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                      <input
+                        type="text"
+                        value={datasetQuestion}
+                        onChange={(e) => setDatasetQuestion(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && askDatasetQuestion()}
+                        placeholder="예: 매출이 가장 높은 제품은? 평균 가격은?"
+                        className="input"
+                        style={{ flex: 1, fontSize: '12px', padding: '10px 12px' }}
+                      />
+                      <button
+                        onClick={askDatasetQuestion}
+                        disabled={datasetQALoading || !datasetQuestion.trim()}
+                        style={{
+                          padding: '10px 20px',
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: datasetQALoading ? 'not-allowed' : 'pointer',
+                          opacity: datasetQALoading ? 0.7 : 1
+                        }}
+                      >
+                        {datasetQALoading ? '답변 중...' : '질문'}
+                      </button>
+                    </div>
+
+                    {datasetQAResult && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {/* AI 답변 */}
+                        <div style={{ padding: '16px', background: 'rgba(102, 126, 234, 0.1)', borderRadius: '8px', borderLeft: '4px solid #667eea' }}>
+                          <div style={{ fontSize: '11px', color: '#667eea', marginBottom: '8px', fontWeight: 600 }}>🤖 AI 답변</div>
+                          <p style={{ fontSize: '14px', lineHeight: 1.8, margin: 0, whiteSpace: 'pre-wrap' }}>{datasetQAResult.answer}</p>
+                        </div>
+
+                        {/* 관련 데이터 */}
+                        {datasetQAResult.relevant_rows.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>📋 관련 데이터 ({datasetQAResult.relevant_rows.length}건)</div>
+                            <div style={{ overflowX: 'auto' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                                <thead>
+                                  <tr style={{ background: 'var(--bg-tertiary)' }}>
+                                    {selectedDataset.columns.map((col, i) => (
+                                      <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{col}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {datasetQAResult.relevant_rows.slice(0, 10).map((row, rowIdx) => (
+                                    <tr key={rowIdx} style={{ background: rowIdx % 2 === 0 ? 'var(--bg-secondary)' : 'var(--bg-tertiary)' }}>
+                                      {row.map((cell, cellIdx) => (
+                                        <td key={cellIdx} style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-light)' }}>{cell}</td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 비용 정보 */}
+                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textAlign: 'right' }}>
+                          토큰: {(datasetQAResult.input_tokens + datasetQAResult.output_tokens).toLocaleString()} | 비용: ${datasetQAResult.cost_usd.toFixed(4)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* 빈 상태 */}
+              {datasets.length === 0 && !datasetLoading && (
+                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                  <span style={{ fontSize: '48px', marginBottom: '16px', display: 'block' }}>📊</span>
+                  <p style={{ fontSize: '14px', marginBottom: '8px' }}>아직 데이터가 없습니다</p>
+                  <p style={{ fontSize: '12px' }}>엑셀 파일을 드래그 앤 드롭하여 시작하세요</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ===== SETTINGS ===== */}
           {tab === "settings" && !selectedMemo && (
             <div className="space-y-3">
@@ -2918,14 +4633,35 @@ function App() {
 
               <div className="card" style={{ padding: '8px' }}>
                 <div className="card-header" style={{ fontSize: '10px', marginBottom: '4px', paddingBottom: '4px' }}>Google Gemini API 키</div>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Enter Gemini API key..."
-                  className="input mb-2"
-                  style={{ fontSize: '11px', padding: '4px 8px' }}
-                />
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Enter Gemini API key..."
+                    className="input"
+                    style={{ flex: 1, fontSize: '11px', padding: '4px 8px' }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!apiKey) {
+                        showToast("API 키를 입력하세요");
+                        return;
+                      }
+                      showToast("테스트 중...");
+                      try {
+                        const result = await invoke<string>("test_gemini_key", { apiKey });
+                        showToast(result);
+                      } catch (e) {
+                        showToast(`${e}`);
+                      }
+                    }}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '10px', padding: '4px 12px', whiteSpace: 'nowrap' }}
+                  >
+                    테스트
+                  </button>
+                </div>
                 <div className="code-block" style={{ padding: '6px', fontSize: '10px' }}>
                   <p className="font-bold mb-1"># {t("settings.apiKeyGuide")}</p>
                   <ol className="list-decimal list-inside space-y-0.5" style={{ color: 'var(--text-secondary)' }}>
@@ -2944,6 +4680,192 @@ function App() {
                 <div className="mt-2" style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
                   2.0 = 저렴 | 2.5 = 균형 | 3.x = 최신/강력
                 </div>
+              </div>
+
+              {/* 검색 API 설정 */}
+              <div className="card" style={{ padding: '14px' }}>
+                <div className="card-header" style={{ fontSize: '12px', marginBottom: '10px', paddingBottom: '8px' }}>
+                  🔍 검색 API (리서치 기능용)
+                </div>
+                <p style={{ fontSize: '11px', color: 'var(--text-primary)', marginBottom: '14px', lineHeight: '1.6' }}>
+                  AI 리서치 기능을 사용하려면 네이버 또는 Google 검색 API 키가 필요합니다.<br/>
+                  <span style={{ color: 'var(--text-secondary)' }}>둘 다 설정하면 더 풍부한 검색 결과를 얻을 수 있습니다. (무료)</span>
+                </p>
+
+                {/* 네이버 API */}
+                <div style={{ marginBottom: '18px', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ background: '#03C75A', color: 'white', padding: '2px 6px', borderRadius: '3px', fontSize: '10px', fontWeight: 700 }}>N</span>
+                    네이버 검색 API
+                    {naverClientId && <span style={{ color: '#22c55e', fontSize: '11px', fontWeight: 500 }}>✓ 설정됨</span>}
+                  </div>
+
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={naverClientId}
+                      onChange={(e) => setNaverClientId(e.target.value)}
+                      placeholder="Client ID"
+                      className="input"
+                      style={{ flex: 1, fontSize: '11px', padding: '8px 10px' }}
+                    />
+                    <input
+                      type="password"
+                      value={naverClientSecret}
+                      onChange={(e) => setNaverClientSecret(e.target.value)}
+                      placeholder="Client Secret"
+                      className="input"
+                      style={{ flex: 1, fontSize: '11px', padding: '8px 10px' }}
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!naverClientId || !naverClientSecret) {
+                          showToast("Client ID와 Secret을 입력하세요");
+                          return;
+                        }
+                        showToast("테스트 중...");
+                        try {
+                          const result = await invoke<string>("test_naver_key", { clientId: naverClientId, clientSecret: naverClientSecret });
+                          showToast(result);
+                        } catch (e) {
+                          showToast(`${e}`);
+                        }
+                      }}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '10px', padding: '8px 12px', whiteSpace: 'nowrap' }}
+                    >
+                      테스트
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize: '11px', color: 'var(--text-primary)', marginBottom: '10px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '6px', lineHeight: '1.8' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '8px', fontSize: '12px' }}>📋 API 키 발급 방법 (무료, 5분 소요)</div>
+                    <div style={{ marginBottom: '4px' }}><strong>1.</strong> 아래 "네이버 개발자 센터" 링크 클릭 후 네이버 계정으로 로그인</div>
+                    <div style={{ marginBottom: '4px' }}><strong>2.</strong> "애플리케이션 등록" 페이지에서 애플리케이션 이름 입력</div>
+                    <div style={{ paddingLeft: '16px', color: 'var(--text-secondary)', marginBottom: '4px' }}>예: "JolaJoa 리서치" 또는 아무 이름</div>
+                    <div style={{ marginBottom: '4px' }}><strong>3.</strong> "사용 API" 선택에서 반드시 <strong>"검색"</strong> 체크</div>
+                    <div style={{ marginBottom: '4px' }}><strong>4.</strong> "비로그인 오픈 API 서비스 환경" 설정:</div>
+                    <div style={{ paddingLeft: '16px', marginBottom: '4px' }}>• 환경 추가 버튼 클릭 → <strong>"WEB 설정"</strong> 선택</div>
+                    <div style={{ paddingLeft: '16px', marginBottom: '4px' }}>• 웹 서비스 URL에 <code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '3px' }}>http://localhost</code> 입력</div>
+                    <div style={{ marginBottom: '4px' }}><strong>5.</strong> "등록하기" 버튼 클릭</div>
+                    <div><strong>6.</strong> 생성된 <strong>Client ID</strong>와 <strong>Client Secret</strong>을 위 입력란에 복사/붙여넣기</div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <a href="https://developers.naver.com/apps/#/register" target="_blank" rel="noopener noreferrer"
+                       style={{ fontSize: '11px', color: '#03C75A', fontWeight: 600, textDecoration: 'underline' }}>
+                      🔗 네이버 개발자 센터 - 애플리케이션 등록
+                    </a>
+                    <a href="https://developers.naver.com/docs/serviceapi/search/web/web.md" target="_blank" rel="noopener noreferrer"
+                       style={{ fontSize: '10px', color: '#60a5fa', textDecoration: 'underline' }}>
+                      📖 API 공식 문서
+                    </a>
+                  </div>
+                </div>
+
+                {/* Google API */}
+                <div style={{ marginBottom: '18px', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ background: '#4285F4', color: 'white', padding: '2px 6px', borderRadius: '3px', fontSize: '10px', fontWeight: 700 }}>G</span>
+                    Google Custom Search API
+                    {googleSearchApiKey && <span style={{ color: '#22c55e', fontSize: '11px', fontWeight: 500 }}>✓ 설정됨</span>}
+                  </div>
+
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      type="password"
+                      value={googleSearchApiKey}
+                      onChange={(e) => setGoogleSearchApiKey(e.target.value)}
+                      placeholder="API Key"
+                      className="input"
+                      style={{ flex: 1, fontSize: '11px', padding: '8px 10px' }}
+                    />
+                    <input
+                      type="text"
+                      value={googleSearchCx}
+                      onChange={(e) => setGoogleSearchCx(e.target.value)}
+                      placeholder="Search Engine ID (cx)"
+                      className="input"
+                      style={{ flex: 1, fontSize: '11px', padding: '8px 10px' }}
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!googleSearchApiKey || !googleSearchCx) {
+                          showToast("API Key와 CX를 입력하세요");
+                          return;
+                        }
+                        showToast("테스트 중...");
+                        try {
+                          const result = await invoke<string>("test_google_key", { apiKey: googleSearchApiKey, cx: googleSearchCx });
+                          showToast(result);
+                        } catch (e) {
+                          showToast(`${e}`);
+                        }
+                      }}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '10px', padding: '8px 12px', whiteSpace: 'nowrap' }}
+                    >
+                      테스트
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize: '11px', color: 'var(--text-primary)', marginBottom: '10px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '6px', lineHeight: '1.8' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '8px', fontSize: '12px' }}>📋 API 키 발급 방법 (무료, 10분 소요)</div>
+
+                    <div style={{ fontWeight: 600, marginTop: '8px', marginBottom: '6px', borderBottom: '1px solid var(--border-light)', paddingBottom: '4px' }}>1단계: 검색 엔진 ID (cx) 만들기</div>
+                    <div style={{ marginBottom: '4px' }}><strong>1.</strong> 아래 "Programmable Search Engine" 링크 클릭</div>
+                    <div style={{ marginBottom: '4px' }}><strong>2.</strong> Google 계정으로 로그인</div>
+                    <div style={{ marginBottom: '4px' }}><strong>3.</strong> "새 검색 엔진 만들기" 또는 "추가" 버튼 클릭</div>
+                    <div style={{ marginBottom: '4px' }}><strong>4.</strong> "검색할 사이트"에 아무 사이트나 입력 (예: <code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '3px' }}>google.com</code>)</div>
+                    <div style={{ marginBottom: '4px' }}><strong>5.</strong> 검색 엔진 생성 후 "수정" 또는 "제어판"으로 이동</div>
+                    <div style={{ marginBottom: '4px' }}><strong>6.</strong> <strong>"전체 웹 검색"</strong>을 반드시 <strong>켜기</strong>로 설정 (중요!)</div>
+                    <div style={{ marginBottom: '4px' }}><strong>7.</strong> "검색 엔진 ID" (cx로 시작하는 문자열) 복사</div>
+
+                    <div style={{ fontWeight: 600, marginTop: '12px', marginBottom: '6px', borderBottom: '1px solid var(--border-light)', paddingBottom: '4px' }}>2단계: API 키 발급</div>
+                    <div style={{ marginBottom: '4px' }}><strong>1.</strong> 아래 "Google Cloud Console" 링크 클릭</div>
+                    <div style={{ marginBottom: '4px' }}><strong>2.</strong> 프로젝트가 없으면 새 프로젝트 생성</div>
+                    <div style={{ marginBottom: '4px' }}><strong>3.</strong> 왼쪽 메뉴에서 "사용자 인증 정보" 선택</div>
+                    <div style={{ marginBottom: '4px' }}><strong>4.</strong> "사용자 인증 정보 만들기" → "API 키" 클릭</div>
+                    <div style={{ marginBottom: '4px' }}><strong>5.</strong> 생성된 API 키 복사해서 위 입력란에 붙여넣기</div>
+                    <div style={{ marginTop: '8px', padding: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                      ⚠️ 처음 사용 시 "Custom Search API"를 활성화해야 할 수 있습니다.<br/>
+                      "API 및 서비스" → "라이브러리" → "Custom Search API" 검색 → "사용" 클릭
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <a href="https://programmablesearchengine.google.com/controlpanel/create" target="_blank" rel="noopener noreferrer"
+                       style={{ fontSize: '11px', color: '#4285F4', fontWeight: 600, textDecoration: 'underline' }}>
+                      🔗 1단계: Programmable Search Engine (검색 엔진 생성)
+                    </a>
+                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer"
+                       style={{ fontSize: '11px', color: '#4285F4', fontWeight: 600, textDecoration: 'underline' }}>
+                      🔗 2단계: Google Cloud Console (API 키 발급)
+                    </a>
+                    <a href="https://developers.google.com/custom-search/v1/introduction" target="_blank" rel="noopener noreferrer"
+                       style={{ fontSize: '10px', color: '#60a5fa', textDecoration: 'underline' }}>
+                      📖 API 공식 문서
+                    </a>
+                  </div>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    try {
+                      await invoke("save_setting", { key: "naver_client_id", value: naverClientId });
+                      await invoke("save_setting", { key: "naver_client_secret", value: naverClientSecret });
+                      await invoke("save_setting", { key: "google_search_api_key", value: googleSearchApiKey });
+                      await invoke("save_setting", { key: "google_search_cx", value: googleSearchCx });
+                      showToast("검색 API 설정 저장됨");
+                    } catch (e) {
+                      showToast(`저장 실패: ${e}`);
+                    }
+                  }}
+                  className="btn btn-primary"
+                  style={{ fontSize: '12px', padding: '10px 12px', width: '100%' }}
+                >
+                  검색 API 설정 저장
+                </button>
               </div>
 
               <div className="card" style={{ padding: '8px' }}>

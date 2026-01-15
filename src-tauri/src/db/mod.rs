@@ -85,6 +85,24 @@ pub struct Attachment {
     pub created_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Dataset {
+    pub id: i64,
+    pub name: String,
+    pub description: String,
+    pub columns: Vec<String>,
+    pub row_count: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DatasetRow {
+    pub id: i64,
+    pub dataset_id: i64,
+    pub row_index: i64,
+    pub data: Vec<String>,
+}
+
 pub fn init_db(app_dir: PathBuf) -> Result<()> {
     let db_path = app_dir.join("jolajoamemo.db");
     std::fs::create_dir_all(&app_dir).ok();
@@ -186,6 +204,27 @@ pub fn init_db(app_dir: PathBuf) -> Result<()> {
         INSERT OR IGNORE INTO settings (key, value) VALUES ('gemini_api_key', '');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('attachment_copy_mode', 'link');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('attachment_storage_path', '');
+
+        -- 엑셀 데이터셋 테이블
+        CREATE TABLE IF NOT EXISTS datasets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            columns_json TEXT NOT NULL,
+            row_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS dataset_rows (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dataset_id INTEGER NOT NULL,
+            row_index INTEGER NOT NULL,
+            data_json TEXT NOT NULL,
+            FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_dataset_rows_dataset ON dataset_rows(dataset_id);
+        CREATE INDEX IF NOT EXISTS idx_dataset_rows_index ON dataset_rows(row_index);
     "#)?;
 
     DB.set(Mutex::new(conn)).ok();
@@ -828,4 +867,158 @@ pub fn get_and_delete_attachments_by_memo(memo_id: i64) -> Result<Vec<Attachment
     let conn = get_db().lock();
     conn.execute("DELETE FROM attachments WHERE memo_id = ?1", params![memo_id])?;
     Ok(attachments)
+}
+
+// ===== 데이터셋(엑셀) 관련 함수 =====
+
+// 데이터셋 저장
+pub fn save_dataset(name: &str, description: &str, columns: &[String]) -> Result<i64> {
+    let conn = get_db().lock();
+    let columns_json = serde_json::to_string(columns).unwrap_or_default();
+    conn.execute(
+        "INSERT INTO datasets (name, description, columns_json, row_count) VALUES (?1, ?2, ?3, 0)",
+        params![name, description, columns_json],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+// 데이터셋 행 저장 (배치)
+pub fn save_dataset_rows(dataset_id: i64, rows: &[Vec<String>]) -> Result<i64> {
+    let conn = get_db().lock();
+
+    for (idx, row) in rows.iter().enumerate() {
+        let data_json = serde_json::to_string(row).unwrap_or_default();
+        conn.execute(
+            "INSERT INTO dataset_rows (dataset_id, row_index, data_json) VALUES (?1, ?2, ?3)",
+            params![dataset_id, idx as i64, data_json],
+        )?;
+    }
+
+    // row_count 업데이트
+    conn.execute(
+        "UPDATE datasets SET row_count = ?1 WHERE id = ?2",
+        params![rows.len() as i64, dataset_id],
+    )?;
+
+    Ok(rows.len() as i64)
+}
+
+// 모든 데이터셋 조회
+pub fn get_all_datasets() -> Result<Vec<Dataset>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, columns_json, row_count, created_at FROM datasets ORDER BY created_at DESC"
+    )?;
+
+    let datasets = stmt.query_map([], |row| {
+        let columns_json: String = row.get(3)?;
+        let columns: Vec<String> = serde_json::from_str(&columns_json).unwrap_or_default();
+        Ok(Dataset {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            columns,
+            row_count: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(datasets)
+}
+
+// 데이터셋 상세 조회
+pub fn get_dataset(id: i64) -> Result<Dataset> {
+    let conn = get_db().lock();
+    let dataset = conn.query_row(
+        "SELECT id, name, description, columns_json, row_count, created_at FROM datasets WHERE id = ?1",
+        params![id],
+        |row| {
+            let columns_json: String = row.get(3)?;
+            let columns: Vec<String> = serde_json::from_str(&columns_json).unwrap_or_default();
+            Ok(Dataset {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                columns,
+                row_count: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        },
+    )?;
+    Ok(dataset)
+}
+
+// 데이터셋 행 조회 (페이징)
+pub fn get_dataset_rows(dataset_id: i64, offset: i64, limit: i64) -> Result<Vec<DatasetRow>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, dataset_id, row_index, data_json FROM dataset_rows
+         WHERE dataset_id = ?1 ORDER BY row_index LIMIT ?2 OFFSET ?3"
+    )?;
+
+    let rows = stmt.query_map(params![dataset_id, limit, offset], |row| {
+        let data_json: String = row.get(3)?;
+        let data: Vec<String> = serde_json::from_str(&data_json).unwrap_or_default();
+        Ok(DatasetRow {
+            id: row.get(0)?,
+            dataset_id: row.get(1)?,
+            row_index: row.get(2)?,
+            data,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(rows)
+}
+
+// 데이터셋 전체 행 조회 (AI 분석용)
+pub fn get_all_dataset_rows(dataset_id: i64) -> Result<Vec<DatasetRow>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, dataset_id, row_index, data_json FROM dataset_rows
+         WHERE dataset_id = ?1 ORDER BY row_index"
+    )?;
+
+    let rows = stmt.query_map(params![dataset_id], |row| {
+        let data_json: String = row.get(3)?;
+        let data: Vec<String> = serde_json::from_str(&data_json).unwrap_or_default();
+        Ok(DatasetRow {
+            id: row.get(0)?,
+            dataset_id: row.get(1)?,
+            row_index: row.get(2)?,
+            data,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(rows)
+}
+
+// 데이터셋 삭제
+pub fn delete_dataset(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM dataset_rows WHERE dataset_id = ?1", params![id])?;
+    conn.execute("DELETE FROM datasets WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+// 데이터셋 검색 (특정 컬럼 값으로)
+pub fn search_dataset_rows(dataset_id: i64, search_text: &str) -> Result<Vec<DatasetRow>> {
+    let conn = get_db().lock();
+    let pattern = format!("%{}%", search_text);
+    let mut stmt = conn.prepare(
+        "SELECT id, dataset_id, row_index, data_json FROM dataset_rows
+         WHERE dataset_id = ?1 AND data_json LIKE ?2 ORDER BY row_index"
+    )?;
+
+    let rows = stmt.query_map(params![dataset_id, pattern], |row| {
+        let data_json: String = row.get(3)?;
+        let data: Vec<String> = serde_json::from_str(&data_json).unwrap_or_default();
+        Ok(DatasetRow {
+            id: row.get(0)?,
+            dataset_id: row.get(1)?,
+            row_index: row.get(2)?,
+            data,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(rows)
 }
