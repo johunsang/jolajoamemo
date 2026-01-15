@@ -182,7 +182,6 @@ function App() {
   const [organizeExecuting, setOrganizeExecuting] = useState(false); // 실행 중
   const [organizeResult, setOrganizeResult] = useState<string | null>(null); // 결과 메시지
   const [organizeStep, setOrganizeStep] = useState<string>(""); // 현재 진행 단계
-  const [_organizeProgress, _setOrganizeProgress] = useState<number>(0); // 진행률 0-100 (향후 사용 예정)
   const [organizeMovedFiles, setOrganizeMovedFiles] = useState<Array<{
     file_name: string;
     from_path: string;
@@ -2612,7 +2611,6 @@ function App() {
                           return;
                         }
                         setOrganizeLoading(true);
-                        setOrganizeProgress(0);
                         setOrganizeStep("🤖 AI가 분석 중...");
                         setOrganizePhase('preview');
 
