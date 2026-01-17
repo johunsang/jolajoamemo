@@ -39,7 +39,7 @@
     "apiKeyGuide": "How to get an API key:",
     "apiKeyStep1": "Visit the website",
     "apiKeyStep2": "Sign in with your Google account",
-    "apiKeyStep3": "Click \"Create API Key\" button",
+    "apiKeyStep3": "Click \"Get API Key\" button",
     "apiKeyStep4": "Copy the key and paste it above",
     "apiKeyNote": "* Gemini API is free to use (daily limits apply)",
     "language": "Language",

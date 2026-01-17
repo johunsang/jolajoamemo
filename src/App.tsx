@@ -340,6 +340,63 @@ function App() {
   const [datasetSearchQuery, setDatasetSearchQuery] = useState<string>("");
   const [isDraggingExcel, setIsDraggingExcel] = useState(false);
 
+  // 포모도로 관련 상태
+  const [pomodoroState, setPomodoroState] = useState<'idle' | 'work' | 'break'>('idle');
+  const [pomodoroTime, setPomodoroTime] = useState(25 * 60); // 초 단위
+  const pomodoroIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 타임블록 관련 상태
+  interface TimeBlock {
+    id: string;
+    task: string;
+    duration: number; // 분 단위
+    startTime: Date | null;
+    endTime: Date | null;
+    completed: boolean;
+  }
+  const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>([]);
+  const [activeBlock, setActiveBlock] = useState<TimeBlock | null>(null);
+  const [newBlockTask, setNewBlockTask] = useState<string>("");
+  const [newBlockDuration, setNewBlockDuration] = useState<number>(60); // 기본 1시간
+  const [showTimeBlock, setShowTimeBlock] = useState(true);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const timeBlockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 알람 관련 상태
+  interface Alarm {
+    id: number;
+    time: string; // HH:MM 형식
+    message: string;
+    enabled: boolean;
+    days: number[]; // 0=일, 1=월, ... 6=토 (빈 배열이면 매일)
+  }
+  const [alarms, setAlarms] = useState<Alarm[]>([]);
+  const [activeAlarm, setActiveAlarm] = useState<Alarm | null>(null);
+  const [alarmEndTime, setAlarmEndTime] = useState<Date | null>(null);
+  const [showAlarmSettings, setShowAlarmSettings] = useState(false);
+  const [newAlarmTime, setNewAlarmTime] = useState('12:00');
+  const [newAlarmMessage, setNewAlarmMessage] = useState('');
+  const lastCheckedMinuteRef = useRef<string>('');
+
+  // 미니게임 관련 상태
+  const [showGame, setShowGame] = useState(false);
+  const [gameScore, setGameScore] = useState(0);
+  const [gameItems, setGameItems] = useState<{id: number; x: number; y: number; emoji: string}[]>([]);
+  const [gameRunning, setGameRunning] = useState(false);
+  const [catcherX, setCatcherX] = useState(50);
+  const gameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 오목 게임 상태
+  const [showOmok, setShowOmok] = useState(false);
+  const [omokBoard, setOmokBoard] = useState<(0 | 1 | 2)[][]>(Array(15).fill(null).map(() => Array(15).fill(0)));
+  const [omokTurn, setOmokTurn] = useState<1 | 2>(1); // 1: 흑(플레이어), 2: 백(AI)
+  const [omokWinner, setOmokWinner] = useState<0 | 1 | 2>(0);
+  const [omokThinking, setOmokThinking] = useState(false);
+  const [omokMessage, setOmokMessage] = useState('');
+  const [omokModel, setOmokModel] = useState('gemini-2.5-flash');
+  const [omokAiThinking, setOmokAiThinking] = useState('');
+  const [omokRecord, setOmokRecord] = useState<{wins: number, losses: number, draws: number}>({wins: 0, losses: 0, draws: 0});
+
   // 무한 스크롤 관련 상태
   const [memoOffset, setMemoOffset] = useState(0);
   const [hasMoreMemos, setHasMoreMemos] = useState(true);
@@ -370,6 +427,96 @@ function App() {
     }
   }, [agentLiveSteps]);
 
+  // 타임블록 시계 업데이트 (1초마다) + 알람 체크
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      setCurrentTime(now);
+
+      // 알람 체크 (분이 바뀔 때만)
+      const currentMinute = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      if (currentMinute !== lastCheckedMinuteRef.current) {
+        lastCheckedMinuteRef.current = currentMinute;
+
+        // 활성 알람이 없을 때만 새 알람 체크
+        if (!activeAlarm) {
+          const triggeredAlarm = alarms.find(alarm => {
+            if (!alarm.enabled) return false;
+            if (alarm.time !== currentMinute) return false;
+            // 요일 체크 (빈 배열이면 매일)
+            if (alarm.days.length > 0 && !alarm.days.includes(now.getDay())) return false;
+            return true;
+          });
+
+          if (triggeredAlarm) {
+            setActiveAlarm(triggeredAlarm);
+            setAlarmEndTime(new Date(now.getTime() + 5 * 60 * 1000)); // 5분 후
+          }
+        }
+      }
+
+      // 알람 종료 체크
+      if (alarmEndTime && now >= alarmEndTime) {
+        setActiveAlarm(null);
+        setAlarmEndTime(null);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [alarms, activeAlarm, alarmEndTime]);
+
+  // 알람 관리 함수들
+  const loadAlarms = async () => {
+    try {
+      const list = await invoke<Alarm[]>("get_alarms");
+      setAlarms(list);
+    } catch (e) {
+      console.error("Failed to load alarms:", e);
+    }
+  };
+
+  const addAlarm = async () => {
+    if (!newAlarmMessage.trim()) return;
+    try {
+      await invoke("save_alarm", {
+        time: newAlarmTime,
+        message: newAlarmMessage.trim(),
+        days: [],
+      });
+      setNewAlarmMessage('');
+      await loadAlarms();
+    } catch (e) {
+      console.error("Failed to add alarm:", e);
+    }
+  };
+
+  const deleteAlarm = async (id: number) => {
+    try {
+      await invoke("delete_alarm", { id });
+      await loadAlarms();
+    } catch (e) {
+      console.error("Failed to delete alarm:", e);
+    }
+  };
+
+  const toggleAlarm = async (id: number) => {
+    try {
+      await invoke("toggle_alarm", { id });
+      await loadAlarms();
+    } catch (e) {
+      console.error("Failed to toggle alarm:", e);
+    }
+  };
+
+  const dismissAlarm = () => {
+    setActiveAlarm(null);
+    setAlarmEndTime(null);
+  };
+
+  const getAlarmRemaining = () => {
+    if (!alarmEndTime) return 0;
+    return Math.max(0, Math.floor((alarmEndTime.getTime() - currentTime.getTime()) / 1000));
+  };
+
   useEffect(() => {
     const initApp = async () => {
       // 버전 먼저 가져오기
@@ -398,7 +545,9 @@ function App() {
         loadSchedules(),
         loadTodos(),
         loadTransactions(),
-        loadDatasets()
+        loadDatasets(),
+        loadAlarms(),
+        loadOmokRecord()
       ]);
 
       // 스플래시 화면 페이드 아웃 (최소 1.5초 유지)
@@ -1061,6 +1210,461 @@ function App() {
     } catch (e) { console.error(e); }
   };
 
+  // 포모도로 타이머 함수
+  const formatPomodoroTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const startPomodoro = () => {
+    if (pomodoroState === 'idle') {
+      setPomodoroState('work');
+      setPomodoroTime(25 * 60);
+      let currentPhase: 'work' | 'break' = 'work';
+      pomodoroIntervalRef.current = setInterval(() => {
+        setPomodoroTime(prev => {
+          if (prev <= 1) {
+            // 작업 끝 -> 휴식으로 또는 휴식 끝 -> 종료
+            if (currentPhase === 'work') {
+              currentPhase = 'break';
+              setPomodoroState('break');
+              return 5 * 60;
+            } else {
+              clearInterval(pomodoroIntervalRef.current!);
+              pomodoroIntervalRef.current = null;
+              setPomodoroState('idle');
+              return 25 * 60;
+            }
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      // 중지
+      if (pomodoroIntervalRef.current) {
+        clearInterval(pomodoroIntervalRef.current);
+        pomodoroIntervalRef.current = null;
+      }
+      setPomodoroState('idle');
+      setPomodoroTime(25 * 60);
+    }
+  };
+
+  // 타임블록 함수들
+  const startTimeBlock = () => {
+    if (!newBlockTask.trim()) return;
+
+    const now = new Date();
+    const endTime = new Date(now.getTime() + newBlockDuration * 60 * 1000);
+
+    const newBlock: TimeBlock = {
+      id: Date.now().toString(),
+      task: newBlockTask.trim(),
+      duration: newBlockDuration,
+      startTime: now,
+      endTime: endTime,
+      completed: false,
+    };
+
+    setActiveBlock(newBlock);
+    setTimeBlocks(prev => [...prev, newBlock]);
+    setNewBlockTask("");
+
+    // 타이머 시작 - 초과 시간도 계속 표시
+    if (timeBlockIntervalRef.current) {
+      clearInterval(timeBlockIntervalRef.current);
+    }
+    // 인터벌은 stopTimeBlock에서만 정리됨 (초과 시간 표시를 위해)
+  };
+
+  const stopTimeBlock = () => {
+    if (timeBlockIntervalRef.current) {
+      clearInterval(timeBlockIntervalRef.current);
+      timeBlockIntervalRef.current = null;
+    }
+    if (activeBlock) {
+      setTimeBlocks(prev => prev.map(b => b.id === activeBlock.id ? { ...b, completed: true, endTime: new Date() } : b));
+    }
+    setActiveBlock(null);
+  };
+
+  const getTimeBlockRemaining = () => {
+    if (!activeBlock || !activeBlock.endTime) return 0;
+    // 음수도 허용 (초과 시간 표시)
+    const remaining = Math.floor((activeBlock.endTime.getTime() - currentTime.getTime()) / 1000);
+    return remaining;
+  };
+
+  const formatTimeBlockRemaining = (seconds: number) => {
+    const absSeconds = Math.abs(seconds);
+    const m = Math.floor(absSeconds / 60);
+    const s = absSeconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // 오목 알고리즘 AI (강화된 점수 계산)
+  const evaluateLine = (board: (0|1|2)[][], row: number, col: number, dr: number, dc: number, player: 1|2) => {
+    let count = 0, openEnds = 0, blocked = 0;
+
+    // 양방향 스캔 (최대 4칸씩)
+    for (let dir = -1; dir <= 1; dir += 2) {
+      for (let i = 1; i <= 4; i++) {
+        const nr = row + dr * i * dir, nc = col + dc * i * dir;
+        if (nr < 0 || nr >= 15 || nc < 0 || nc >= 15) { blocked++; break; }
+        const cell = board[nr][nc];
+        if (cell === player) { count++; }
+        else if (cell === 0) { openEnds++; break; }
+        else { blocked++; break; }
+      }
+    }
+    return { count, openEnds, blocked };
+  };
+
+  const evaluatePosition = (board: (0|1|2)[][], row: number, col: number, player: 1|2): number => {
+    if (board[row][col] !== 0) return -1;
+    const opponent = player === 1 ? 2 : 1;
+    let attackScore = 0, defenseScore = 0;
+    const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+
+    // 중앙 선호 (약하게)
+    const centerDist = Math.abs(row - 7) + Math.abs(col - 7);
+    attackScore += (14 - centerDist);
+
+    // 공격 패턴 분석
+    let myFours = 0, myOpenThrees = 0, myThrees = 0;
+    for (const [dr, dc] of dirs) {
+      const result = evaluateLine(board, row, col, dr, dc, player);
+
+      if (result.count >= 4) { attackScore += 1000000; } // 5목 승리
+      else if (result.count === 3 && result.openEnds >= 2) { myOpenThrees++; attackScore += 50000; } // 열린4
+      else if (result.count === 3 && result.openEnds >= 1) { myFours++; attackScore += 10000; } // 4
+      else if (result.count === 2 && result.openEnds >= 2) { myOpenThrees++; attackScore += 5000; } // 열린3
+      else if (result.count === 2 && result.openEnds >= 1) { myThrees++; attackScore += 500; } // 3
+      else if (result.count === 1 && result.openEnds >= 2) { attackScore += 100; } // 열린2
+      else if (result.count === 1 && result.openEnds >= 1) { attackScore += 30; }
+    }
+
+    // 쌍3, 4-3 보너스
+    if (myOpenThrees >= 2) attackScore += 100000; // 쌍3
+    if (myFours >= 1 && myOpenThrees >= 1) attackScore += 80000; // 4-3
+
+    // 수비 패턴 분석 (더 높은 가중치!)
+    let oppFours = 0, oppOpenThrees = 0;
+    for (const [dr, dc] of dirs) {
+      const result = evaluateLine(board, row, col, dr, dc, opponent);
+
+      if (result.count >= 4) { defenseScore += 900000; } // 상대 5목 막기 (거의 최우선)
+      else if (result.count === 3 && result.openEnds >= 2) { oppOpenThrees++; defenseScore += 200000; } // 상대 열린4 막기
+      else if (result.count === 3 && result.openEnds >= 1) { oppFours++; defenseScore += 80000; } // 상대 4 막기
+      else if (result.count === 2 && result.openEnds >= 2) { oppOpenThrees++; defenseScore += 30000; } // 상대 열린3 막기
+      else if (result.count === 2 && result.openEnds >= 1) { defenseScore += 1000; } // 상대 3 막기
+    }
+
+    // 상대 쌍3 막기
+    if (oppOpenThrees >= 2) defenseScore += 150000;
+    if (oppFours >= 1 && oppOpenThrees >= 1) defenseScore += 120000;
+
+    return attackScore + defenseScore;
+  };
+
+  const getTopMoves = (board: (0|1|2)[][], player: 1|2, count: number = 5) => {
+    const moves: {row: number, col: number, score: number}[] = [];
+    const checked = new Set<string>();
+
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        if (board[r][c] !== 0) {
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              const nr = r + dr, nc = c + dc;
+              const key = `${nr},${nc}`;
+              if (nr >= 0 && nr < 15 && nc >= 0 && nc < 15 && board[nr][nc] === 0 && !checked.has(key)) {
+                checked.add(key);
+                moves.push({ row: nr, col: nc, score: evaluatePosition(board, nr, nc, player) });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (moves.length === 0) return [{ row: 7, col: 7, score: 100 }];
+    return moves.sort((a, b) => b.score - a.score).slice(0, count);
+  };
+
+  // 오목 전적 로드
+  const loadOmokRecord = async () => {
+    try {
+      const record = await invoke<string>("get_setting", { key: "omok_record" });
+      if (record) {
+        setOmokRecord(JSON.parse(record));
+      }
+    } catch (e) {
+      console.error("Failed to load omok record:", e);
+    }
+  };
+
+  // 오목 전적 저장
+  const saveOmokRecord = async (newRecord: {wins: number, losses: number, draws: number}) => {
+    try {
+      await invoke("save_setting", { key: "omok_record", value: JSON.stringify(newRecord) });
+      setOmokRecord(newRecord);
+    } catch (e) {
+      console.error("Failed to save omok record:", e);
+    }
+  };
+
+  // 오목 승리 기록
+  const recordOmokWin = async () => {
+    const newRecord = { ...omokRecord, wins: omokRecord.wins + 1 };
+    await saveOmokRecord(newRecord);
+  };
+
+  // 오목 패배 기록
+  const recordOmokLoss = async () => {
+    const newRecord = { ...omokRecord, losses: omokRecord.losses + 1 };
+    await saveOmokRecord(newRecord);
+  };
+
+  // 전적 초기화
+  const resetOmokRecord = async () => {
+    await saveOmokRecord({ wins: 0, losses: 0, draws: 0 });
+  };
+
+  // 오목 게임 함수들
+  const resetOmok = () => {
+    setOmokBoard(Array(15).fill(null).map(() => Array(15).fill(0)));
+    setOmokTurn(1);
+    setOmokWinner(0);
+    setOmokMessage('');
+    setOmokAiThinking('');
+  };
+
+  const checkOmokWinner = (board: (0 | 1 | 2)[][], row: number, col: number, player: 1 | 2): boolean => {
+    const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+    for (const [dr, dc] of directions) {
+      let count = 1;
+      for (let i = 1; i < 5; i++) {
+        const r = row + dr * i, c = col + dc * i;
+        if (r >= 0 && r < 15 && c >= 0 && c < 15 && board[r][c] === player) count++;
+        else break;
+      }
+      for (let i = 1; i < 5; i++) {
+        const r = row - dr * i, c = col - dc * i;
+        if (r >= 0 && r < 15 && c >= 0 && c < 15 && board[r][c] === player) count++;
+        else break;
+      }
+      if (count >= 5) return true;
+    }
+    return false;
+  };
+
+  const getAiMove = async (board: (0 | 1 | 2)[][]): Promise<{row: number; col: number} | null> => {
+    try {
+      // 1. 알고리즘으로 최고의 수 계산
+      const topMoves = getTopMoves(board, 2, 5);
+      const bestMove = topMoves[0];
+
+      // 돌 정보 수집
+      const blackStones: string[] = [];
+      const whiteStones: string[] = [];
+      for (let r = 0; r < 15; r++) {
+        for (let c = 0; c < 15; c++) {
+          if (board[r][c] === 1) blackStones.push(`${r},${c}`);
+          else if (board[r][c] === 2) whiteStones.push(`${r},${c}`);
+        }
+      }
+
+      // 분석 정보 생성
+      const moveList = topMoves.map((m, i) => `${i+1}. (${m.row},${m.col}) 점수:${m.score}`).join('\n');
+
+      let reason = '';
+      if (bestMove.score >= 100000) reason = '🏆 승리 확정!';
+      else if (bestMove.score >= 90000) reason = '🚨 긴급 방어!';
+      else if (bestMove.score >= 50000) reason = '🛡️ 강력 방어!';
+      else if (bestMove.score >= 15000) reason = '⚔️ 강력 공격!';
+      else if (bestMove.score >= 5000) reason = '🛡️ 방어+구축';
+      else if (bestMove.score >= 800) reason = '📈 라인 확장';
+      else reason = '🎯 전략적 배치';
+
+      const analysisInfo = `
+🤖 모델: ${omokModel}
+=== 알고리즘 분석 ===
+검정(X) ${blackStones.length}개: ${blackStones.join(' | ') || '없음'}
+흰색(O) ${whiteStones.length}개: ${whiteStones.join(' | ') || '없음'}
+
+📊 상위 5개 후보:
+${moveList}
+
+🎯 선택: (${bestMove.row},${bestMove.col}) - ${reason}`;
+
+      // 2. 긴급 상황이면 알고리즘 결과 바로 사용
+      if (bestMove.score >= 50000) {
+        setOmokAiThinking(analysisInfo + `\n\n⚡ 긴급! 알고리즘 직접 결정\n${reason}`);
+        return { row: bestMove.row, col: bestMove.col };
+      }
+
+      // 3. AI API로 성격 추가
+      const key = await invoke<string>("get_setting", { key: "gemini_api_key" });
+      if (!key) {
+        setOmokAiThinking(analysisInfo + '\n\n(API 키 없음 - 알고리즘 사용)');
+        return { row: bestMove.row, col: bestMove.col };
+      }
+
+      setOmokAiThinking(analysisInfo + '\n\n🤖 AI 코멘트 생성 중...');
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${omokModel}:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `오목 AI 해설자. 알고리즘이 선택한 수에 대해 코멘트해줘.
+
+상황:
+- 검정(X): ${blackStones.join(', ') || '없음'}
+- 흰색(O): ${whiteStones.join(', ') || '없음'}
+- 알고리즘 선택: (${bestMove.row},${bestMove.col}) 점수:${bestMove.score}
+- 이유: ${reason}
+
+다른 후보:
+${topMoves.slice(1).map(m => `(${m.row},${m.col}) 점수:${m.score}`).join(', ')}
+
+출력 (한국어로, 재밌게):
+😎 코멘트: (이 수가 왜 좋은지 한줄)
+🔥 도발: (상대방에게 트래시톡!)
+💡 다음 전략: (앞으로의 계획 한줄)`
+              }]
+            }],
+            generationConfig: { maxOutputTokens: 150, temperature: 0.8 }
+          })
+        }
+      );
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      setOmokAiThinking(analysisInfo + `\n\n--- ${omokModel} 응답 ---\n` + text);
+
+      // 알고리즘이 선택한 수 사용 (AI는 코멘트만)
+      return { row: bestMove.row, col: bestMove.col };
+
+    } catch (e) {
+      console.error('AI error:', e);
+      // 에러시 알고리즘 결과 사용
+      const fallback = getTopMoves(board, 2, 1)[0];
+      return { row: fallback.row, col: fallback.col };
+    }
+  };
+
+
+  const placeOmokStone = async (row: number, col: number) => {
+    if (omokBoard[row][col] !== 0 || omokWinner !== 0 || omokThinking) return;
+    if (omokTurn !== 1) return;
+
+    const newBoard = omokBoard.map(r => [...r]);
+    newBoard[row][col] = 1;
+    setOmokBoard(newBoard);
+
+    if (checkOmokWinner(newBoard, row, col, 1)) {
+      setOmokWinner(1);
+      setOmokMessage('🎉 축하합니다! 당신이 이겼습니다!');
+      recordOmokWin();
+      return;
+    }
+
+    setOmokTurn(2);
+    setOmokThinking(true);
+    setOmokMessage('AI가 생각 중...');
+
+    const aiMove = await getAiMove(newBoard);
+    if (aiMove) {
+      const aiBoard = newBoard.map(r => [...r]);
+      aiBoard[aiMove.row][aiMove.col] = 2;
+      setOmokBoard(aiBoard);
+
+      if (checkOmokWinner(aiBoard, aiMove.row, aiMove.col, 2)) {
+        setOmokWinner(2);
+        setOmokMessage('😢 AI가 이겼습니다!');
+        recordOmokLoss();
+      } else {
+        setOmokMessage('');
+      }
+    }
+    setOmokThinking(false);
+    setOmokTurn(1);
+  };
+
+  // 미니게임 함수들
+  const emojis = ['🍎', '🍊', '🍋', '🍇', '🍓', '🍑', '🥝', '🍒', '💎', '⭐'];
+
+  const startGame = () => {
+    setGameScore(0);
+    setGameItems([]);
+    setGameRunning(true);
+    setCatcherX(50);
+
+    if (gameIntervalRef.current) clearInterval(gameIntervalRef.current);
+
+    gameIntervalRef.current = setInterval(() => {
+      // 새 아이템 생성
+      if (Math.random() < 0.3) {
+        const newItem = {
+          id: Date.now() + Math.random(),
+          x: Math.random() * 80 + 10,
+          y: 0,
+          emoji: emojis[Math.floor(Math.random() * emojis.length)],
+        };
+        setGameItems(prev => [...prev, newItem]);
+      }
+
+      // 아이템 이동
+      setGameItems(prev => {
+        const updated = prev.map(item => ({ ...item, y: item.y + 3 }));
+        return updated.filter(item => item.y < 100);
+      });
+    }, 50);
+  };
+
+  const stopGame = () => {
+    setGameRunning(false);
+    if (gameIntervalRef.current) {
+      clearInterval(gameIntervalRef.current);
+      gameIntervalRef.current = null;
+    }
+  };
+
+  const handleGameKeyDown = (e: React.KeyboardEvent) => {
+    if (!gameRunning) return;
+    if (e.key === 'ArrowLeft') {
+      setCatcherX(prev => Math.max(5, prev - 5));
+    } else if (e.key === 'ArrowRight') {
+      setCatcherX(prev => Math.min(95, prev + 5));
+    }
+  };
+
+  // 아이템 충돌 체크
+  useEffect(() => {
+    if (!gameRunning) return;
+
+    setGameItems(prev => {
+      let caught = false;
+      const remaining = prev.filter(item => {
+        if (item.y >= 85 && item.y <= 95 && Math.abs(item.x - catcherX) < 10) {
+          caught = true;
+          return false;
+        }
+        return true;
+      });
+      if (caught) {
+        setGameScore(s => s + 10);
+      }
+      return remaining;
+    });
+  }, [catcherX, gameRunning, gameItems]);
+
   const toggleMinimized = async () => {
     try {
       const win = getCurrentWindow();
@@ -1694,7 +2298,17 @@ function App() {
             animation: 'fadeInUp 0.8s ease-out 0.6s both',
           }}
         >
-          {appVersion ? `v${appVersion}` : '로딩중...'}
+          화면이 준비 중입니다...
+        </p>
+        <p
+          style={{
+            fontSize: '11px',
+            color: 'rgba(255,255,255,0.4)',
+            marginTop: '8px',
+            animation: 'fadeInUp 0.8s ease-out 0.8s both',
+          }}
+        >
+          {appVersion ? `v${appVersion}` : ''}
         </p>
         {updating && (
           <div
@@ -1743,6 +2357,541 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
+      {/* 활성 타임블록 오버레이 */}
+      {activeBlock && !activeBlock.completed && !minimized && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '50px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: getTimeBlockRemaining() < 300 ? 'rgba(239, 68, 68, 0.95)' : 'rgba(59, 130, 246, 0.95)',
+            borderRadius: '16px',
+            padding: '16px 32px',
+            zIndex: 200,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '8px',
+            minWidth: '280px',
+          }}
+        >
+          <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+            {activeBlock.task}
+          </div>
+          <div style={{
+            fontSize: '48px',
+            fontWeight: 800,
+            fontFamily: 'monospace',
+            color: '#fff',
+            letterSpacing: '-2px',
+          }}>
+            {getTimeBlockRemaining() < 0 ? (
+              <span style={{ color: '#fef08a' }}>+{formatTimeBlockRemaining(getTimeBlockRemaining())}</span>
+            ) : (
+              <span>{formatTimeBlockRemaining(getTimeBlockRemaining())}</span>
+            )}
+          </div>
+          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>
+            {getTimeBlockRemaining() <= 0 ? '초과 시간' : '남은 시간'} • {activeBlock.duration}분 블록
+          </div>
+          <button
+            onClick={stopTimeBlock}
+            style={{
+              marginTop: '8px',
+              padding: '8px 24px',
+              fontSize: '13px',
+              fontWeight: 600,
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              background: 'rgba(255,255,255,0.2)',
+              color: '#fff',
+            }}
+          >
+            블록 종료
+          </button>
+        </div>
+      )}
+
+      {/* 미니게임 오버레이 */}
+      {showGame && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.85)',
+            zIndex: 9998,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onKeyDown={handleGameKeyDown}
+          tabIndex={0}
+          ref={(el) => el?.focus()}
+        >
+          <div style={{
+            background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 100%)',
+            borderRadius: '16px',
+            padding: '24px',
+            width: '340px',
+            height: '440px',
+            position: 'relative',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            border: '2px solid #0f3460',
+          }}>
+            {/* 게임 헤더 */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '12px',
+            }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: '#fff' }}>🎮 과일 받기</span>
+              <span style={{ fontSize: '20px', fontWeight: 800, color: '#fbbf24' }}>⭐ {gameScore}</span>
+              <button
+                onClick={() => { stopGame(); setShowGame(false); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  color: '#fff',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 게임 영역 */}
+            <div style={{
+              position: 'relative',
+              width: '100%',
+              height: '320px',
+              background: 'linear-gradient(180deg, #0f0f23 0%, #1a1a3e 100%)',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              border: '1px solid #333',
+            }}>
+              {/* 떨어지는 아이템들 */}
+              {gameItems.map(item => (
+                <div
+                  key={item.id}
+                  style={{
+                    position: 'absolute',
+                    left: `${item.x}%`,
+                    top: `${item.y}%`,
+                    fontSize: '28px',
+                    transform: 'translate(-50%, -50%)',
+                    transition: 'top 0.05s linear',
+                  }}
+                >
+                  {item.emoji}
+                </div>
+              ))}
+
+              {/* 바구니 */}
+              <div style={{
+                position: 'absolute',
+                left: `${catcherX}%`,
+                bottom: '5%',
+                fontSize: '36px',
+                transform: 'translateX(-50%)',
+                transition: 'left 0.05s ease-out',
+              }}>
+                🧺
+              </div>
+
+              {/* 게임 시작 화면 */}
+              {!gameRunning && (
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.7)',
+                }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🍎</div>
+                  <div style={{ color: '#fff', fontSize: '14px', marginBottom: '8px' }}>← → 키로 바구니를 움직여요!</div>
+                  <button
+                    onClick={startGame}
+                    style={{
+                      padding: '12px 32px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: '#fff',
+                      marginTop: '12px',
+                    }}
+                  >
+                    게임 시작!
+                  </button>
+                  {gameScore > 0 && (
+                    <div style={{ color: '#fbbf24', fontSize: '14px', marginTop: '12px' }}>
+                      마지막 점수: {gameScore}점
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 게임 중 점수 */}
+            {gameRunning && (
+              <div style={{
+                textAlign: 'center',
+                marginTop: '12px',
+              }}>
+                <button
+                  onClick={stopGame}
+                  style={{
+                    padding: '8px 20px',
+                    fontSize: '12px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    background: '#ef4444',
+                    color: '#fff',
+                  }}
+                >
+                  게임 중지
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 오목 게임 오버레이 */}
+      {showOmok && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.9)',
+            zIndex: 9998,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            overflowY: 'auto',
+            padding: '10px 0 40px 0',
+          }}
+        >
+          <div style={{
+            background: '#d4a574',
+            borderRadius: '12px',
+            padding: '16px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            marginBottom: '10px',
+          }}>
+            {/* 헤더 */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '8px',
+              gap: '8px',
+            }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: '#3d2914' }}>⚫ 오목 ⚪</span>
+              {/* 전적 표시 */}
+              <div
+                onClick={resetOmokRecord}
+                title="클릭하여 전적 초기화"
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  background: '#e8c89e',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ color: '#22c55e' }}>🏆{omokRecord.wins}</span>
+                <span style={{ color: '#666' }}>-</span>
+                <span style={{ color: '#ef4444' }}>💀{omokRecord.losses}</span>
+              </div>
+              <select
+                value={omokModel}
+                onChange={(e) => setOmokModel(e.target.value)}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  border: '1px solid #8b6914',
+                  borderRadius: '4px',
+                  background: '#e8c89e',
+                  color: '#3d2914',
+                  fontWeight: 500,
+                }}
+              >
+                {availableModels.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={resetOmok}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    background: '#3b82f6',
+                    color: '#fff',
+                  }}
+                >
+                  새 게임
+                </button>
+                <button
+                  onClick={() => setShowOmok(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '20px',
+                    cursor: 'pointer',
+                    color: '#3d2914',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* 상태 메시지 */}
+            <div style={{
+              textAlign: 'center',
+              marginBottom: '8px',
+              fontSize: '14px',
+              fontWeight: 600,
+              color: omokWinner === 1 ? '#22c55e' : omokWinner === 2 ? '#ef4444' : '#3d2914',
+              minHeight: '20px',
+            }}>
+              {omokMessage || (omokWinner === 0 ? (omokTurn === 1 ? '당신의 차례 (⚫)' : 'AI 차례 (⚪)') : '')}
+            </div>
+
+            {/* 오목판 */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(15, 24px)',
+              gridTemplateRows: 'repeat(15, 24px)',
+              gap: '0px',
+              background: '#c4956a',
+              padding: '8px',
+              borderRadius: '4px',
+              boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.2)',
+            }}>
+              {omokBoard.map((row, ri) =>
+                row.map((cell, ci) => (
+                  <div
+                    key={`${ri}-${ci}`}
+                    onClick={() => placeOmokStone(ri, ci)}
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: cell === 0 && omokWinner === 0 && !omokThinking ? 'pointer' : 'default',
+                      position: 'relative',
+                    }}
+                  >
+                    {/* 격자선 */}
+                    <div style={{
+                      position: 'absolute',
+                      width: '100%',
+                      height: '1px',
+                      background: '#8b6914',
+                      top: '50%',
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      height: '100%',
+                      width: '1px',
+                      background: '#8b6914',
+                      left: '50%',
+                    }} />
+                    {/* 돌 */}
+                    {cell !== 0 && (
+                      <div style={{
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '50%',
+                        background: cell === 1
+                          ? 'radial-gradient(circle at 30% 30%, #555, #000)'
+                          : 'radial-gradient(circle at 30% 30%, #fff, #ccc)',
+                        boxShadow: '2px 2px 4px rgba(0,0,0,0.4)',
+                        zIndex: 1,
+                      }} />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* 현재 모델 표시 */}
+            <div style={{
+              textAlign: 'center',
+              marginTop: '8px',
+              fontSize: '10px',
+              color: '#5d3a1a',
+              background: '#e8c89e',
+              padding: '4px 8px',
+              borderRadius: '4px',
+            }}>
+              🤖 AI 모델: <strong>{omokModel}</strong>
+            </div>
+
+            {/* AI 생각 과정 표시 */}
+            {(omokThinking || omokAiThinking) && (
+              <div style={{
+                marginTop: '12px',
+                padding: '12px',
+                background: '#1a1a2e',
+                borderRadius: '8px',
+                maxWidth: '450px',
+                minHeight: '200px',
+                maxHeight: '400px',
+                overflowY: 'auto',
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '8px',
+                  position: 'sticky',
+                  top: 0,
+                  background: '#1a1a2e',
+                  paddingBottom: '4px',
+                }}>
+                  <span style={{
+                    fontSize: '20px',
+                    animation: omokThinking ? 'pulse 0.5s ease-in-out infinite' : 'none',
+                  }}>🧠</span>
+                  <span style={{ fontSize: '12px', color: '#a78bfa', fontWeight: 600 }}>
+                    {omokThinking ? 'AI 생각 중...' : 'AI 분석 완료'}
+                  </span>
+                </div>
+                <div style={{
+                  fontSize: '10px',
+                  color: '#e2e8f0',
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: '1.5',
+                  fontFamily: 'monospace',
+                }}>
+                  {omokThinking && !omokAiThinking ? (
+                    <span style={{ color: '#94a3b8' }}>
+                      위협 스캔 중... 🔍
+                      <br />
+                      <span style={{ animation: 'pulse 0.3s ease-in-out infinite', display: 'inline-block' }}>●</span>
+                      <span style={{ animation: 'pulse 0.3s ease-in-out infinite 0.1s', display: 'inline-block' }}>●</span>
+                      <span style={{ animation: 'pulse 0.3s ease-in-out infinite 0.2s', display: 'inline-block' }}>●</span>
+                    </span>
+                  ) : (
+                    omokAiThinking
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 안내 */}
+            {!omokThinking && !omokAiThinking && (
+              <div style={{
+                textAlign: 'center',
+                marginTop: '12px',
+                fontSize: '11px',
+                color: '#5d3a1a',
+              }}>
+                🎯 5개를 먼저 연결하면 승리!
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 알람 오버레이 - 전체 화면 빨간색 */}
+      {activeAlarm && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(220, 38, 38, 0.97)',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '24px',
+          }}
+        >
+          <div style={{
+            fontSize: '80px',
+            animation: 'pulse 1s ease-in-out infinite',
+          }}>
+            ⏰
+          </div>
+          <div style={{
+            fontSize: '48px',
+            fontWeight: 800,
+            color: '#fff',
+            textAlign: 'center',
+            padding: '0 20px',
+            textShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          }}>
+            {activeAlarm.message}
+          </div>
+          <div style={{
+            fontSize: '24px',
+            color: 'rgba(255,255,255,0.8)',
+            fontFamily: 'monospace',
+          }}>
+            {Math.floor(getAlarmRemaining() / 60)}:{(getAlarmRemaining() % 60).toString().padStart(2, '0')} 후 자동 닫힘
+          </div>
+          <button
+            onClick={dismissAlarm}
+            style={{
+              marginTop: '24px',
+              padding: '16px 48px',
+              fontSize: '18px',
+              fontWeight: 700,
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              background: '#fff',
+              color: '#dc2626',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+            }}
+          >
+            확인
+          </button>
+        </div>
+      )}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+        }
+      `}</style>
+
       {/* ===== TOP NAV BAR - macOS Native Style ===== */}
       <div
         className="flex flex-col select-none"
@@ -1771,67 +2920,65 @@ function App() {
           )}
         </div>
 
-        {!minimized && <nav className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* 그룹 1: 메모, 검색 */}
-          <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', marginRight: '12px', border: '1px solid var(--border-light)' }}>
-            {[
-              { id: "input" as Tab, label: "AI 메모" },
-              { id: "search" as Tab, label: "AI 검색" },
-            ].map((item) => (
-              <button
-                key={item.id}
-                onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
-                className="btn"
-                style={{
-                  background: tab === item.id && !selectedMemo ? 'var(--bg-active)' : 'transparent',
-                  fontWeight: tab === item.id && !selectedMemo ? 600 : 400,
-                  padding: '4px 10px',
-                  fontSize: '13px'
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          {/* 그룹 2: 일정, 할일, 가계부 */}
-          <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', marginRight: '12px', border: '1px solid var(--border-light)' }}>
-            {[
-              { id: "schedule" as Tab, label: schedules.length > 0 ? `일정 (${schedules.length})` : '일정' },
-              { id: "todo" as Tab, label: todos.filter(t => !t.completed).length > 0 ? `할일 (${todos.filter(t => !t.completed).length})` : '할일' },
-              { id: "ledger" as Tab, label: transactions.length > 0 ? `가계부 (${transactions.length})` : '가계부' },
-            ].map((item) => (
-              <button
-                key={item.id}
-                onClick={() => { setTab(item.id); setSelectedMemo(null); setResult(null); }}
-                className="btn"
-                style={{
-                  background: tab === item.id && !selectedMemo ? 'var(--bg-active)' : 'transparent',
-                  fontWeight: tab === item.id && !selectedMemo ? 600 : 400,
-                  padding: '4px 10px',
-                  fontSize: '13px'
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          {/* 설정 */}
-          <div className="flex gap-1 px-2 py-1" style={{ background: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+        {!minimized && <nav className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <button
+            onClick={() => { setTab("input"); setSelectedMemo(null); setResult(null); }}
+            className="btn"
+            style={{ padding: '4px 6px', fontSize: '14px' }}
+            title="홈"
+          >
+            🏠
+          </button>
+          <span style={{ width: '1px', height: '16px', background: 'var(--border-light)', margin: '0 2px' }}></span>
+          {[
+            { id: "input" as Tab, icon: "✏️", title: "메모", badge: null },
+            { id: "search" as Tab, icon: "🔍", title: "검색", badge: null },
+            { id: "schedule" as Tab, icon: "📅", title: "일정", badge: schedules.length > 0 ? schedules.length : null },
+            { id: "todo" as Tab, icon: "✅", title: "할일", badge: todos.filter(t => !t.completed).length > 0 ? todos.filter(t => !t.completed).length : null },
+            { id: "ledger" as Tab, icon: "💰", title: "가계부", badge: null },
+            { id: "settings" as Tab, icon: "⚙️", title: "설정", badge: null },
+          ].map((item) => (
             <button
-              onClick={() => { setTab("settings"); setSelectedMemo(null); setResult(null); }}
+              key={item.id}
+              onClick={() => {
+                if (tab === item.id && !selectedMemo) {
+                  // 같은 탭을 다시 누르면 홈으로
+                  setTab("input"); setSelectedMemo(null); setResult(null);
+                } else {
+                  setTab(item.id); setSelectedMemo(null); setResult(null);
+                }
+              }}
               className="btn"
               style={{
-                background: tab === "settings" && !selectedMemo ? 'var(--bg-active)' : 'transparent',
-                fontWeight: tab === "settings" && !selectedMemo ? 600 : 400,
-                padding: '4px 10px',
-                fontSize: '13px'
+                background: tab === item.id && !selectedMemo ? 'var(--bg-active)' : 'transparent',
+                padding: '4px 6px',
+                fontSize: '14px',
+                position: 'relative'
               }}
+              title={item.title}
             >
-              설정
+              {item.icon}
+              {item.badge && <span style={{ position: 'absolute', top: '-2px', right: '-2px', background: '#ef4444', color: '#fff', fontSize: '9px', padding: '1px 4px', borderRadius: '8px', minWidth: '14px', textAlign: 'center' }}>{item.badge}</span>}
             </button>
-          </div>
+          ))}
+          <span style={{ width: '1px', height: '16px', background: 'var(--border-light)', margin: '0 4px' }}></span>
+          {[
+            { type: "calendar", icon: "🗓️", title: "달력 위젯" },
+            { type: "clock", icon: "🕐", title: "시계 위젯" },
+            { type: "timer", icon: "⏱️", title: "타이머 위젯" },
+            { type: "timeblock", icon: "⏰", title: "타임블록 위젯" },
+            { type: "postit", icon: "📝", title: "포스트잇 위젯" },
+          ].map((widget) => (
+            <button
+              key={widget.type}
+              onClick={() => invoke("open_widget", { widgetType: widget.type })}
+              className="btn"
+              style={{ padding: '4px 6px', fontSize: '14px' }}
+              title={widget.title}
+            >
+              {widget.icon}
+            </button>
+          ))}
         </nav>}
 
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -5222,11 +6369,445 @@ function App() {
       )}
 
       {/* 토스트 알림 */}
+      {/* 타임블록 바 (하단 고정) - 2줄 레이아웃 */}
+      {!minimized && showTimeBlock && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: 'var(--bg-secondary)',
+            borderTop: '1px solid var(--border-light)',
+            display: 'flex',
+            flexDirection: 'column',
+            zIndex: 100,
+          }}
+        >
+          {/* 첫 번째 줄: 날짜/시간, 포모도로, 알람 */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '8px 24px',
+            gap: '16px',
+            borderBottom: '1px solid var(--border-light)',
+          }}>
+            {/* 현재 날짜 및 시간 */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                {currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
+              </span>
+              <span style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'monospace' }}>
+                {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            </div>
+
+            {/* 구분선 */}
+            <div style={{ width: '1px', height: '24px', background: 'var(--border-light)' }} />
+
+            {/* 포모도로 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>🍅 포모도로</span>
+              <span
+                style={{
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  fontFamily: 'monospace',
+                  color: pomodoroState === 'work' ? '#ef4444' : pomodoroState === 'break' ? '#22c55e' : 'var(--text)',
+                }}
+              >
+                {formatPomodoroTime(pomodoroTime)}
+              </span>
+              <span style={{ fontSize: '10px', color: pomodoroState === 'work' ? '#ef4444' : pomodoroState === 'break' ? '#22c55e' : 'var(--text-muted)' }}>
+                {pomodoroState === 'work' ? '집중' : pomodoroState === 'break' ? '휴식' : '대기'}
+              </span>
+              <button
+                onClick={startPomodoro}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  background: pomodoroState !== 'idle' ? '#ef4444' : 'var(--accent)',
+                  color: '#fff',
+                }}
+              >
+                {pomodoroState !== 'idle' ? '중지' : '시작'}
+              </button>
+            </div>
+
+            <div style={{ flex: 1 }} />
+
+            {/* 구분선 */}
+            <div style={{ width: '1px', height: '24px', background: 'var(--border-light)' }} />
+
+            {/* 게임 버튼들 */}
+            <button
+              onClick={() => setShowGame(true)}
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 500,
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+              }}
+              title="과일 받기"
+            >
+              🍎
+            </button>
+            <button
+              onClick={() => { resetOmok(); setShowOmok(true); }}
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 500,
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+              }}
+              title="오목 (AI 대전)"
+            >
+              ⚫
+            </button>
+
+          {/* 알람 버튼 */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowAlarmSettings(!showAlarmSettings)}
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 500,
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                background: showAlarmSettings ? 'var(--accent)' : 'var(--bg)',
+                color: showAlarmSettings ? '#fff' : 'var(--text)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              🔔 알람 {alarms.filter(a => a.enabled).length}
+            </button>
+
+            {/* 알람 설정 패널 */}
+            {showAlarmSettings && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '40px',
+                  right: 0,
+                  width: '280px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+                  padding: '12px',
+                  zIndex: 200,
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px' }}>알람 설정</div>
+
+                {/* 새 알람 추가 */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                  <select
+                    value={newAlarmTime.split(':')[0]}
+                    onChange={(e) => setNewAlarmTime(`${e.target.value}:${newAlarmTime.split(':')[1]}`)}
+                    style={{
+                      padding: '4px 6px',
+                      fontSize: '11px',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '4px',
+                      background: 'var(--bg)',
+                      color: 'var(--text)',
+                      width: '50px',
+                    }}
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i.toString().padStart(2, '0')}>
+                        {i.toString().padStart(2, '0')}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '14px', color: 'var(--text)', alignSelf: 'center' }}>:</span>
+                  <select
+                    value={newAlarmTime.split(':')[1]}
+                    onChange={(e) => setNewAlarmTime(`${newAlarmTime.split(':')[0]}:${e.target.value}`)}
+                    style={{
+                      padding: '4px 6px',
+                      fontSize: '11px',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '4px',
+                      background: 'var(--bg)',
+                      color: 'var(--text)',
+                      width: '50px',
+                    }}
+                  >
+                    {Array.from({ length: 60 }, (_, i) => (
+                      <option key={i} value={i.toString().padStart(2, '0')}>
+                        {i.toString().padStart(2, '0')}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={newAlarmMessage}
+                    onChange={(e) => setNewAlarmMessage(e.target.value)}
+                    placeholder="알람 메시지"
+                    onKeyDown={(e) => e.key === 'Enter' && addAlarm()}
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      fontSize: '11px',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '4px',
+                      background: 'var(--bg)',
+                      color: 'var(--text)',
+                    }}
+                  />
+                  <button
+                    onClick={addAlarm}
+                    disabled={!newAlarmMessage.trim()}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: newAlarmMessage.trim() ? 'pointer' : 'not-allowed',
+                      background: newAlarmMessage.trim() ? 'var(--accent)' : 'var(--border-light)',
+                      color: '#fff',
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* 알람 목록 */}
+                <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                  {alarms.map(alarm => (
+                    <div
+                      key={alarm.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '6px 0',
+                        borderBottom: '1px solid var(--border-light)',
+                        opacity: alarm.enabled ? 1 : 0.5,
+                      }}
+                    >
+                      <button
+                        onClick={() => toggleAlarm(alarm.id)}
+                        style={{
+                          padding: '2px 6px',
+                          fontSize: '10px',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          background: alarm.enabled ? '#22c55e' : 'var(--border-light)',
+                          color: '#fff',
+                        }}
+                      >
+                        {alarm.enabled ? 'ON' : 'OFF'}
+                      </button>
+                      <span style={{ fontSize: '12px', fontFamily: 'monospace', fontWeight: 600 }}>
+                        {alarm.time}
+                      </span>
+                      <span style={{ fontSize: '11px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {alarm.message}
+                      </span>
+                      <button
+                        onClick={() => deleteAlarm(alarm.id)}
+                        style={{
+                          padding: '2px 6px',
+                          fontSize: '10px',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          background: 'transparent',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  {alarms.length === 0 && (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', padding: '12px' }}>
+                      알람이 없습니다
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 닫기 버튼 */}
+            <button
+              onClick={() => setShowTimeBlock(false)}
+              style={{
+                padding: '4px 8px',
+                fontSize: '12px',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+              }}
+              title="타임블록 숨기기"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* 두 번째 줄: 타임블록 */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '8px 24px',
+            gap: '12px',
+          }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', minWidth: '80px', fontWeight: 500 }}>📦 타임블록</span>
+            {activeBlock && !activeBlock.completed ? (
+              <>
+                <span style={{
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  color: '#3b82f6',
+                  maxWidth: '200px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {activeBlock.task}
+                </span>
+                <span style={{
+                  fontSize: '16px',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  color: getTimeBlockRemaining() < 300 ? '#ef4444' : '#3b82f6',
+                }}>
+                  {formatTimeBlockRemaining(getTimeBlockRemaining())}
+                </span>
+                <button
+                  onClick={stopTimeBlock}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    background: '#ef4444',
+                    color: '#fff',
+                  }}
+                >
+                  중지
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={newBlockTask}
+                  onChange={(e) => setNewBlockTask(e.target.value)}
+                  placeholder="할 일 입력..."
+                  onKeyDown={(e) => e.key === 'Enter' && startTimeBlock()}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: '12px',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: '4px',
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    width: '180px',
+                  }}
+                />
+                <select
+                  value={newBlockDuration}
+                  onChange={(e) => setNewBlockDuration(Number(e.target.value))}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: '12px',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: '4px',
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    minWidth: '90px',
+                  }}
+                >
+                  <option value={15}>15분</option>
+                  <option value={30}>30분</option>
+                  <option value={45}>45분</option>
+                  <option value={60}>1시간</option>
+                  <option value={90}>1시간 30분</option>
+                  <option value={120}>2시간</option>
+                  <option value={180}>3시간</option>
+                </select>
+                <button
+                  onClick={startTimeBlock}
+                  disabled={!newBlockTask.trim()}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: newBlockTask.trim() ? 'pointer' : 'not-allowed',
+                    background: newBlockTask.trim() ? '#3b82f6' : 'var(--border-light)',
+                    color: '#fff',
+                  }}
+                >
+                  시작
+                </button>
+              </>
+            )}
+            {timeBlocks.filter(b => b.completed).length > 0 && (
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                완료 {timeBlocks.filter(b => b.completed).length}개
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 타임블록 열기 버튼 (숨겨진 경우) */}
+      {!minimized && !showTimeBlock && (
+        <button
+          onClick={() => setShowTimeBlock(true)}
+          style={{
+            position: 'fixed',
+            bottom: '16px',
+            right: '16px',
+            padding: '8px 12px',
+            fontSize: '12px',
+            fontWeight: 500,
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            background: 'var(--accent)',
+            color: '#fff',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            zIndex: 100,
+          }}
+        >
+          ⏰ 타임블록
+        </button>
+      )}
+
       {toast && (
         <div
           style={{
             position: 'fixed',
-            bottom: '24px',
+            bottom: showTimeBlock ? '100px' : '24px',
             left: '50%',
             transform: 'translateX(-50%)',
             background: 'var(--text)',

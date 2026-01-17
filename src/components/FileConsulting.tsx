@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { convertFileSrc } from "@tauri-apps/api/core";
 
 interface FileInfo {
   path: string;
@@ -42,7 +41,6 @@ interface FileConsultingResult {
   old_files: FileInfo[];
   type_summary: Record<string, TypeStats>;
   folders: FolderAnalysis[];
-  images: FileInfo[];
   videos: FileInfo[];
 }
 
@@ -397,7 +395,6 @@ export default function FileConsulting() {
         ...result,
         large_files: result.large_files.filter(f => !pathsToDelete.has(f.path)),
         old_files: result.old_files.filter(f => !pathsToDelete.has(f.path)),
-        images: result.images.filter(f => !pathsToDelete.has(f.path)),
         videos: result.videos.filter(f => !pathsToDelete.has(f.path)),
       });
     }
@@ -425,7 +422,7 @@ export default function FileConsulting() {
 
   const getSelectedSize = () => {
     if (!result) return 0;
-    const allFiles = [...result.large_files, ...result.old_files, ...result.images, ...result.videos];
+    const allFiles = [...result.large_files, ...result.old_files, ...result.videos];
     return allFiles.filter(f => selectedFiles.has(f.path)).reduce((sum, f) => sum + f.size, 0);
   };
 
@@ -1451,7 +1448,7 @@ export default function FileConsulting() {
               {[
                 { key: "large", label: `📁 대용량 (${result.large_files.length})`, color: "#ef4444" },
                 { key: "old", label: `🕐 오래된 파일 (${result.old_files.length})`, color: "#f59e0b" },
-                { key: "media", label: `🖼️ 미디어 (${result.images.length + result.videos.length})`, color: "#22c55e" },
+                { key: "media", label: `🎬 동영상 (${result.videos.length})`, color: "#22c55e" },
                 { key: "duplicates", label: `📋 중복 (${result.duplicates.length})`, color: "#8b5cf6" },
                 { key: "rename", label: `✏️ 폴더명 변경 (${renameSuggestions.length})`, color: "#06b6d4" },
               ].map((tab) => (
@@ -1715,26 +1712,25 @@ export default function FileConsulting() {
               </div>
             )}
 
-            {/* 미디어 갤러리 */}
+            {/* 동영상 갤러리 */}
             {activeTab === "media" && (
               <div>
-                {(result.images.length + result.videos.length) === 0 ? (
-                  <p style={{ color: "#888", textAlign: "center", padding: "40px" }}>이미지 또는 비디오 파일이 없습니다.</p>
+                {result.videos.length === 0 ? (
+                  <p style={{ color: "#888", textAlign: "center", padding: "40px" }}>동영상 파일이 없습니다.</p>
                 ) : (
                   <>
                     {/* 전체 선택 버튼 */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "12px", background: "rgba(34, 197, 94, 0.1)", borderRadius: "8px" }}>
                       <div style={{ color: "#86efac" }}>
-                        🖼️ {result.images.length}개 이미지, 🎬 {result.videos.length}개 비디오 ({formatSize([...result.images, ...result.videos].reduce((sum, f) => sum + f.size, 0))})
+                        🎬 {result.videos.length}개 동영상 ({formatSize(result.videos.reduce((sum, f) => sum + f.size, 0))})
                       </div>
                       <button
                         onClick={() => {
-                          const allMedia = [...result.images, ...result.videos];
-                          isAllSelected(allMedia) ? deselectAllFiles(allMedia) : selectAllFiles(allMedia);
+                          isAllSelected(result.videos) ? deselectAllFiles(result.videos) : selectAllFiles(result.videos);
                         }}
                         style={{
                           padding: "8px 16px",
-                          background: isAllSelected([...result.images, ...result.videos]) ? "#22c55e" : "rgba(34, 197, 94, 0.3)",
+                          background: isAllSelected(result.videos) ? "#22c55e" : "rgba(34, 197, 94, 0.3)",
                           border: "none",
                           borderRadius: "6px",
                           color: "white",
@@ -1742,57 +1738,9 @@ export default function FileConsulting() {
                           fontWeight: 600
                         }}
                       >
-                        {isAllSelected([...result.images, ...result.videos]) ? "✓ 전체 선택됨" : "☐ 전체 선택"}
+                        {isAllSelected(result.videos) ? "✓ 전체 선택됨" : "☐ 전체 선택"}
                       </button>
                     </div>
-
-                    {/* 이미지 섹션 */}
-                    {result.images.length > 0 && (
-                      <div style={{ marginBottom: "24px" }}>
-                        <h4 style={{ margin: "0 0 12px 0", color: "#fff" }}>🖼️ 이미지 ({result.images.length}개)</h4>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px" }}>
-                          {result.images.slice(0, 50).map((file, idx) => (
-                            <div
-                              key={idx}
-                              style={{
-                                position: "relative",
-                                borderRadius: "10px",
-                                overflow: "hidden",
-                                background: selectedFiles.has(file.path) ? "rgba(34, 197, 94, 0.3)" : "var(--bg-tertiary)",
-                                border: selectedFiles.has(file.path) ? "2px solid #22c55e" : "2px solid transparent",
-                                cursor: "pointer"
-                              }}
-                              onClick={() => toggleFileSelection(file.path)}
-                            >
-                              <div style={{ width: "100%", height: "120px", overflow: "hidden", background: "#1a1a2e" }}>
-                                <img
-                                  src={convertFileSrc(file.path)}
-                                  alt={file.name}
-                                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                                  onError={(e) => {
-                                    (e.target as HTMLImageElement).style.display = "none";
-                                    (e.target as HTMLImageElement).parentElement!.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#64748b;">🖼️</div>';
-                                  }}
-                                />
-                              </div>
-                              <div style={{ padding: "8px" }}>
-                                <div style={{ color: "#fff", fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {file.name}
-                                </div>
-                                <div style={{ color: "#64748b", fontSize: "10px" }}>{formatSize(file.size)}</div>
-                              </div>
-                              {selectedFiles.has(file.path) && (
-                                <div style={{ position: "absolute", top: "8px", right: "8px", width: "24px", height: "24px", background: "#22c55e", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "14px" }}>✓</div>
-                              )}
-                              <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "4px" }} onClick={e => e.stopPropagation()}>
-                                <button onClick={() => openFile(file.path)} style={{ padding: "4px 6px", background: "rgba(0,0,0,0.6)", border: "none", borderRadius: "4px", color: "#fff", cursor: "pointer", fontSize: "10px" }}>👁️</button>
-                                <button onClick={() => setDeleteConfirm({ path: file.path, name: file.name })} style={{ padding: "4px 6px", background: "rgba(239, 68, 68, 0.8)", border: "none", borderRadius: "4px", color: "#fff", cursor: "pointer", fontSize: "10px" }}>🗑️</button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
 
                     {/* 비디오 섹션 */}
                     {result.videos.length > 0 && (

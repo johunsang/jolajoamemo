@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "timeblock", "calendar", "clock", "timer", "postit_*"],
   "permissions": [
     "core:default",
     "opener:default",
@@ -13,6 +13,15 @@
     "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
     "core:window:allow-set-always-on-top",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-position",
+    "core:window:allow-outer-position",
+    "core:webview:allow-create-webview-window",
+    "core:webview:allow-webview-close",
+    "core:webview:allow-create-webview",
+    "core:webview:allow-get-all-webviews",
     "dialog:default",
     "updater:default",
     "process:default",
@@ -22,6 +31,10 @@
     "fs:allow-rename",
     "fs:allow-mkdir",
     "fs:allow-read-dir",
-    "fs:allow-exists"
+    "fs:allow-exists",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }]
+    }
   ]
 }

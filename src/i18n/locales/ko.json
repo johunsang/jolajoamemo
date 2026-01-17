@@ -39,7 +39,7 @@
     "apiKeyGuide": "API 키 발급 방법:",
     "apiKeyStep1": "에 접속합니다",
     "apiKeyStep2": "Google 계정으로 로그인합니다",
-    "apiKeyStep3": "\"Create API Key\" 버튼을 클릭합니다",
+    "apiKeyStep3": "\"Get API Key\" 버튼을 클릭합니다",
     "apiKeyStep4": "생성된 키를 복사해서 위에 붙여넣기 합니다",
     "apiKeyNote": "* Gemini API는 무료로 사용 가능합니다 (일일 한도 있음)",
     "language": "언어 설정",

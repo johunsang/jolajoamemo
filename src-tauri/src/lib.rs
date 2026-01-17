@@ -1,7 +1,7 @@
 mod ai;
 mod db;
 
-use db::{Attachment, Memo, Schedule, Todo, Transaction, Dataset, DatasetRow};
+use db::{Attachment, Memo, Schedule, Todo, Transaction, Dataset, DatasetRow, Postit};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use calamine::{Reader, Xlsx};
@@ -2303,6 +2303,132 @@ fn rename_folder(old_path: String, new_name: String) -> Result<String, String> {
     ))
 }
 
+// 포스트잇 저장
+#[tauri::command]
+async fn save_postit(postit: Postit) -> Result<(), String> {
+    db::save_postit(&postit).map_err(|e| e.to_string())
+}
+
+// 포스트잇 조회
+#[tauri::command]
+async fn get_postit(id: String) -> Result<Option<Postit>, String> {
+    db::get_postit(&id).map_err(|e| e.to_string())
+}
+
+// 전체 포스트잇 조회
+#[tauri::command]
+async fn get_all_postits() -> Result<Vec<Postit>, String> {
+    db::get_all_postits().map_err(|e| e.to_string())
+}
+
+// 포스트잇 삭제
+#[tauri::command]
+async fn delete_postit(id: String) -> Result<(), String> {
+    db::delete_postit(&id).map_err(|e| e.to_string())
+}
+
+// === 알람 관련 명령 ===
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AlarmData {
+    pub id: i64,
+    pub time: String,
+    pub message: String,
+    pub enabled: bool,
+    pub days: Vec<i32>,
+}
+
+// 알람 저장
+#[tauri::command]
+async fn save_alarm(time: String, message: String, days: Vec<i32>) -> Result<i64, String> {
+    let days_json = serde_json::to_string(&days).unwrap_or_default();
+    db::save_alarm(&time, &message, &days_json).map_err(|e| e.to_string())
+}
+
+// 전체 알람 조회
+#[tauri::command]
+async fn get_alarms() -> Result<Vec<AlarmData>, String> {
+    let alarms = db::get_all_alarms().map_err(|e| e.to_string())?;
+    let result: Vec<AlarmData> = alarms.iter().map(|a| {
+        let days: Vec<i32> = serde_json::from_str(&a.days).unwrap_or_default();
+        AlarmData {
+            id: a.id,
+            time: a.time.clone(),
+            message: a.message.clone(),
+            enabled: a.enabled,
+            days,
+        }
+    }).collect();
+    Ok(result)
+}
+
+// 알람 토글
+#[tauri::command]
+async fn toggle_alarm(id: i64) -> Result<(), String> {
+    db::toggle_alarm(id).map_err(|e| e.to_string())
+}
+
+// 알람 삭제
+#[tauri::command]
+async fn delete_alarm(id: i64) -> Result<(), String> {
+    db::delete_alarm(id).map_err(|e| e.to_string())
+}
+
+// 위젯 창 열기
+#[tauri::command]
+async fn open_widget(app: tauri::AppHandle, widget_type: String, widget_id: Option<String>) -> Result<(), String> {
+
+    let (title, url, width, height, transparent) = match widget_type.as_str() {
+        "calendar" => ("Calendar", "calendar.html", 260, 420, true),
+        "clock" => ("Clock", "clock.html", 220, 120, true),
+        "timer" => ("Timer", "timer.html", 240, 200, true),
+        "postit" => {
+            // 포스트잇 10장 제한 체크
+            let existing_postits = db::get_all_postits().unwrap_or_default();
+            if existing_postits.len() >= 10 && widget_id.is_none() {
+                return Err("포스트잇은 최대 10장까지만 만들 수 있습니다.".to_string());
+            }
+            let id = widget_id.unwrap_or_else(|| format!("{}", chrono::Utc::now().timestamp_millis()));
+            let url = format!("postit.html?id={}", id);
+            return create_widget_window(&app, "Post-it", &url, 200, 180, true, &format!("postit_{}", id)).await;
+        },
+        "timeblock" => ("Time Block", "timeblock.html", 200, 120, true),
+        _ => return Err(format!("알 수 없는 위젯: {}", widget_type)),
+    };
+
+    create_widget_window(&app, title, url, width, height, transparent, &widget_type).await
+}
+
+async fn create_widget_window(
+    app: &tauri::AppHandle,
+    title: &str,
+    url: &str,
+    width: u32,
+    height: u32,
+    _transparent: bool,
+    label: &str,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+
+    // 이미 열려있으면 포커스
+    if let Some(window) = app.get_webview_window(label) {
+        window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+        .title(title)
+        .inner_size(width as f64, height as f64)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2381,7 +2507,16 @@ pub fn run() {
             get_folder_rename_suggestions,
             rename_folder,
             cancel_scan,
-            is_scan_cancelled
+            is_scan_cancelled,
+            save_postit,
+            get_postit,
+            get_all_postits,
+            delete_postit,
+            open_widget,
+            save_alarm,
+            get_alarms,
+            toggle_alarm,
+            delete_alarm
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

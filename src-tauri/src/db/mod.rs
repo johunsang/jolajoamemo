@@ -3,8 +3,92 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
+use rand::Rng;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 static DB: OnceCell<Mutex<Connection>> = OnceCell::new();
+static ENCRYPTION_KEY: OnceCell<[u8; 32]> = OnceCell::new();
+
+// 암호화 키 초기화 (앱당 고유 키 생성 또는 로드)
+fn init_encryption_key(conn: &Connection) -> [u8; 32] {
+    // 기존 키가 있는지 확인
+    let existing_key: Option<String> = conn
+        .query_row("SELECT value FROM settings WHERE key = 'encryption_key'", [], |row| row.get(0))
+        .ok();
+
+    if let Some(key_b64) = existing_key {
+        // 기존 키 복호화
+        if let Ok(key_bytes) = BASE64.decode(&key_b64) {
+            if key_bytes.len() == 32 {
+                let mut key = [0u8; 32];
+                key.copy_from_slice(&key_bytes);
+                return key;
+            }
+        }
+    }
+
+    // 새 키 생성
+    let mut key = [0u8; 32];
+    rand::thread_rng().fill(&mut key);
+
+    // 키 저장
+    let key_b64 = BASE64.encode(&key);
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('encryption_key', ?1)",
+        params![key_b64],
+    ).ok();
+
+    key
+}
+
+// 값 암호화
+pub fn encrypt_value(plaintext: &str) -> String {
+    let key = ENCRYPTION_KEY.get().expect("Encryption key not initialized");
+    let cipher = Aes256Gcm::new_from_slice(key).expect("Invalid key length");
+
+    // 랜덤 nonce 생성
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    // 암호화
+    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes())
+        .expect("Encryption failed");
+
+    // nonce + ciphertext를 base64로 인코딩
+    let mut combined = nonce_bytes.to_vec();
+    combined.extend(ciphertext);
+    BASE64.encode(&combined)
+}
+
+// 값 복호화
+pub fn decrypt_value(encrypted: &str) -> Result<String> {
+    let key = ENCRYPTION_KEY.get().expect("Encryption key not initialized");
+    let cipher = Aes256Gcm::new_from_slice(key).expect("Invalid key length");
+
+    // base64 디코딩
+    let combined = BASE64.decode(encrypted)
+        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+    if combined.len() < 12 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+
+    // nonce와 ciphertext 분리
+    let nonce = Nonce::from_slice(&combined[..12]);
+    let ciphertext = &combined[12..];
+
+    // 복호화
+    let plaintext = cipher.decrypt(nonce, ciphertext)
+        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+    String::from_utf8(plaintext)
+        .map_err(|_| rusqlite::Error::InvalidQuery)
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Memo {
@@ -101,6 +185,43 @@ pub struct DatasetRow {
     pub dataset_id: i64,
     pub row_index: i64,
     pub data: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SecretKey {
+    pub id: i64,
+    pub key_name: String,            // 키 이름 (예: OPENAI_API_KEY, AWS_SECRET)
+    pub key_value: String,           // 키 값
+    pub key_type: String,            // 키 타입 (API_KEY, TOKEN, SECRET, CREDENTIAL, ENV_VAR, PASSWORD)
+    pub provider: String,            // 프로바이더 (OpenAI, AWS, Google, GitHub, etc.)
+    pub provider_url: Option<String>, // 프로바이더 링크/콘솔 URL
+    pub description: Option<String>, // 설명
+    pub issued_date: String,         // 발급일자
+    pub expires_at: Option<String>,  // 만료일자
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Postit {
+    pub id: String,
+    pub content: String,
+    pub color: String,
+    pub position_x: i32,
+    pub position_y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Alarm {
+    pub id: i64,
+    pub time: String,        // HH:MM 형식
+    pub message: String,
+    pub enabled: bool,
+    pub days: String,        // JSON 배열 형식 (빈 배열이면 매일)
+    pub created_at: String,
 }
 
 pub fn init_db(app_dir: PathBuf) -> Result<()> {
@@ -225,7 +346,55 @@ pub fn init_db(app_dir: PathBuf) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_dataset_rows_dataset ON dataset_rows(dataset_id);
         CREATE INDEX IF NOT EXISTS idx_dataset_rows_index ON dataset_rows(row_index);
+
+        -- 시크릿 키 관리 테이블 (API 키, 토큰, 시크릿 등)
+        CREATE TABLE IF NOT EXISTS secret_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key_name TEXT NOT NULL,
+            key_value TEXT NOT NULL,
+            key_type TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            provider_url TEXT,
+            description TEXT,
+            issued_date TEXT NOT NULL,
+            expires_at TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_secret_keys_provider ON secret_keys(provider);
+        CREATE INDEX IF NOT EXISTS idx_secret_keys_type ON secret_keys(key_type);
+        CREATE INDEX IF NOT EXISTS idx_secret_keys_expires ON secret_keys(expires_at);
+
+        -- 포스트잇 테이블
+        CREATE TABLE IF NOT EXISTS postits (
+            id TEXT PRIMARY KEY,
+            content TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT 'yellow',
+            position_x INTEGER DEFAULT 100,
+            position_y INTEGER DEFAULT 100,
+            width INTEGER DEFAULT 220,
+            height INTEGER DEFAULT 200,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- 알람 테이블
+        CREATE TABLE IF NOT EXISTS alarms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            time TEXT NOT NULL,
+            message TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            days TEXT DEFAULT '[]',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_alarms_time ON alarms(time);
+        CREATE INDEX IF NOT EXISTS idx_alarms_enabled ON alarms(enabled);
     "#)?;
+
+    // 암호화 키 초기화
+    let enc_key = init_encryption_key(&conn);
+    ENCRYPTION_KEY.set(enc_key).ok();
 
     DB.set(Mutex::new(conn)).ok();
     Ok(())
@@ -1021,4 +1190,280 @@ pub fn search_dataset_rows(dataset_id: i64, search_text: &str) -> Result<Vec<Dat
     })?.collect::<Result<Vec<_>>>()?;
 
     Ok(rows)
+}
+
+// ===== 시크릿 키 관리 함수 =====
+
+// 시크릿 키 저장
+pub fn save_secret_key(key: &SecretKey) -> Result<i64> {
+    let conn = get_db().lock();
+    // 키 값 암호화
+    let encrypted_value = encrypt_value(&key.key_value);
+    conn.execute(
+        "INSERT INTO secret_keys (key_name, key_value, key_type, provider, provider_url, description, issued_date, expires_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            key.key_name,
+            encrypted_value,  // 암호화된 값 저장
+            key.key_type,
+            key.provider,
+            key.provider_url,
+            key.description,
+            key.issued_date,
+            key.expires_at
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+// 모든 시크릿 키 조회
+pub fn get_all_secret_keys() -> Result<Vec<SecretKey>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, key_name, key_value, key_type, provider, provider_url, description, issued_date, expires_at, created_at
+         FROM secret_keys ORDER BY provider ASC, key_name ASC, created_at DESC"
+    )?;
+
+    let keys = stmt.query_map([], |row| {
+        let encrypted_value: String = row.get(2)?;
+        // 복호화 (실패하면 암호화된 값 그대로 반환)
+        let decrypted_value = decrypt_value(&encrypted_value).unwrap_or(encrypted_value);
+        Ok(SecretKey {
+            id: row.get(0)?,
+            key_name: row.get(1)?,
+            key_value: decrypted_value,  // 복호화된 값
+            key_type: row.get(3)?,
+            provider: row.get(4)?,
+            provider_url: row.get(5)?,
+            description: row.get(6)?,
+            issued_date: row.get(7)?,
+            expires_at: row.get(8)?,
+            created_at: row.get(9)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(keys)
+}
+
+// 시크릿 키 수정
+pub fn update_secret_key(
+    id: i64,
+    key_name: &str,
+    key_value: &str,
+    key_type: &str,
+    provider: &str,
+    provider_url: Option<&str>,
+    description: Option<&str>,
+    issued_date: &str,
+    expires_at: Option<&str>,
+) -> Result<()> {
+    let conn = get_db().lock();
+    // 키 값 암호화
+    let encrypted_value = encrypt_value(key_value);
+    conn.execute(
+        "UPDATE secret_keys SET key_name = ?1, key_value = ?2, key_type = ?3, provider = ?4, provider_url = ?5, description = ?6, issued_date = ?7, expires_at = ?8 WHERE id = ?9",
+        params![key_name, encrypted_value, key_type, provider, provider_url, description, issued_date, expires_at, id],
+    )?;
+    Ok(())
+}
+
+// 시크릿 키 삭제
+pub fn delete_secret_key(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM secret_keys WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+// 프로바이더별 시크릿 키 조회
+pub fn get_secret_keys_by_provider(provider: &str) -> Result<Vec<SecretKey>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, key_name, key_value, key_type, provider, provider_url, description, issued_date, expires_at, created_at
+         FROM secret_keys WHERE provider = ?1 ORDER BY key_name ASC, created_at DESC"
+    )?;
+
+    let keys = stmt.query_map([provider], |row| {
+        let encrypted_value: String = row.get(2)?;
+        let decrypted_value = decrypt_value(&encrypted_value).unwrap_or(encrypted_value);
+        Ok(SecretKey {
+            id: row.get(0)?,
+            key_name: row.get(1)?,
+            key_value: decrypted_value,
+            key_type: row.get(3)?,
+            provider: row.get(4)?,
+            provider_url: row.get(5)?,
+            description: row.get(6)?,
+            issued_date: row.get(7)?,
+            expires_at: row.get(8)?,
+            created_at: row.get(9)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(keys)
+}
+
+// 모든 프로바이더 목록 조회
+pub fn get_all_secret_providers() -> Result<Vec<String>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT provider FROM secret_keys ORDER BY provider"
+    )?;
+
+    let providers = stmt.query_map([], |row| {
+        row.get::<_, String>(0)
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(providers)
+}
+
+// 키 타입별 시크릿 키 조회
+pub fn get_secret_keys_by_type(key_type: &str) -> Result<Vec<SecretKey>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, key_name, key_value, key_type, provider, provider_url, description, issued_date, expires_at, created_at
+         FROM secret_keys WHERE key_type = ?1 ORDER BY provider ASC, key_name ASC"
+    )?;
+
+    let keys = stmt.query_map([key_type], |row| {
+        let encrypted_value: String = row.get(2)?;
+        let decrypted_value = decrypt_value(&encrypted_value).unwrap_or(encrypted_value);
+        Ok(SecretKey {
+            id: row.get(0)?,
+            key_name: row.get(1)?,
+            key_value: decrypted_value,
+            key_type: row.get(3)?,
+            provider: row.get(4)?,
+            provider_url: row.get(5)?,
+            description: row.get(6)?,
+            issued_date: row.get(7)?,
+            expires_at: row.get(8)?,
+            created_at: row.get(9)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(keys)
+}
+
+// === Postit 관련 함수 ===
+
+pub fn save_postit(postit: &Postit) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute(
+        "INSERT OR REPLACE INTO postits (id, content, color, position_x, position_y, width, height, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))",
+        params![
+            postit.id,
+            postit.content,
+            postit.color,
+            postit.position_x,
+            postit.position_y,
+            postit.width,
+            postit.height,
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn get_postit(id: &str) -> Result<Option<Postit>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, content, color, position_x, position_y, width, height, created_at, updated_at
+         FROM postits WHERE id = ?1"
+    )?;
+
+    let result = stmt.query_row([id], |row| {
+        Ok(Postit {
+            id: row.get(0)?,
+            content: row.get(1)?,
+            color: row.get(2)?,
+            position_x: row.get(3)?,
+            position_y: row.get(4)?,
+            width: row.get(5)?,
+            height: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    });
+
+    match result {
+        Ok(postit) => Ok(Some(postit)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn get_all_postits() -> Result<Vec<Postit>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, content, color, position_x, position_y, width, height, created_at, updated_at
+         FROM postits ORDER BY created_at DESC"
+    )?;
+
+    let postits = stmt.query_map([], |row| {
+        Ok(Postit {
+            id: row.get(0)?,
+            content: row.get(1)?,
+            color: row.get(2)?,
+            position_x: row.get(3)?,
+            position_y: row.get(4)?,
+            width: row.get(5)?,
+            height: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(postits)
+}
+
+pub fn delete_postit(id: &str) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM postits WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+// === Alarm 관련 함수 ===
+
+pub fn save_alarm(time: &str, message: &str, days: &str) -> Result<i64> {
+    let conn = get_db().lock();
+    conn.execute(
+        "INSERT INTO alarms (time, message, enabled, days) VALUES (?1, ?2, 1, ?3)",
+        params![time, message, days],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_all_alarms() -> Result<Vec<Alarm>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, time, message, enabled, days, created_at FROM alarms ORDER BY time ASC"
+    )?;
+
+    let alarms = stmt.query_map([], |row| {
+        Ok(Alarm {
+            id: row.get(0)?,
+            time: row.get(1)?,
+            message: row.get(2)?,
+            enabled: row.get::<_, i32>(3)? != 0,
+            days: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(alarms)
+}
+
+pub fn toggle_alarm(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute(
+        "UPDATE alarms SET enabled = NOT enabled WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_alarm(id: i64) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM alarms WHERE id = ?1", params![id])?;
+    Ok(())
 }
