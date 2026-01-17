@@ -3,92 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce,
-};
-use rand::Rng;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 static DB: OnceCell<Mutex<Connection>> = OnceCell::new();
-static ENCRYPTION_KEY: OnceCell<[u8; 32]> = OnceCell::new();
-
-// 암호화 키 초기화 (앱당 고유 키 생성 또는 로드)
-fn init_encryption_key(conn: &Connection) -> [u8; 32] {
-    // 기존 키가 있는지 확인
-    let existing_key: Option<String> = conn
-        .query_row("SELECT value FROM settings WHERE key = 'encryption_key'", [], |row| row.get(0))
-        .ok();
-
-    if let Some(key_b64) = existing_key {
-        // 기존 키 복호화
-        if let Ok(key_bytes) = BASE64.decode(&key_b64) {
-            if key_bytes.len() == 32 {
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&key_bytes);
-                return key;
-            }
-        }
-    }
-
-    // 새 키 생성
-    let mut key = [0u8; 32];
-    rand::thread_rng().fill(&mut key);
-
-    // 키 저장
-    let key_b64 = BASE64.encode(&key);
-    conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('encryption_key', ?1)",
-        params![key_b64],
-    ).ok();
-
-    key
-}
-
-// 값 암호화
-pub fn encrypt_value(plaintext: &str) -> String {
-    let key = ENCRYPTION_KEY.get().expect("Encryption key not initialized");
-    let cipher = Aes256Gcm::new_from_slice(key).expect("Invalid key length");
-
-    // 랜덤 nonce 생성
-    let mut nonce_bytes = [0u8; 12];
-    rand::thread_rng().fill(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    // 암호화
-    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes())
-        .expect("Encryption failed");
-
-    // nonce + ciphertext를 base64로 인코딩
-    let mut combined = nonce_bytes.to_vec();
-    combined.extend(ciphertext);
-    BASE64.encode(&combined)
-}
-
-// 값 복호화
-pub fn decrypt_value(encrypted: &str) -> Result<String> {
-    let key = ENCRYPTION_KEY.get().expect("Encryption key not initialized");
-    let cipher = Aes256Gcm::new_from_slice(key).expect("Invalid key length");
-
-    // base64 디코딩
-    let combined = BASE64.decode(encrypted)
-        .map_err(|_| rusqlite::Error::InvalidQuery)?;
-
-    if combined.len() < 12 {
-        return Err(rusqlite::Error::InvalidQuery);
-    }
-
-    // nonce와 ciphertext 분리
-    let nonce = Nonce::from_slice(&combined[..12]);
-    let ciphertext = &combined[12..];
-
-    // 복호화
-    let plaintext = cipher.decrypt(nonce, ciphertext)
-        .map_err(|_| rusqlite::Error::InvalidQuery)?;
-
-    String::from_utf8(plaintext)
-        .map_err(|_| rusqlite::Error::InvalidQuery)
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Memo {
@@ -102,23 +18,6 @@ pub struct Memo {
     pub embedding: Option<Vec<u8>>,
     pub created_at: String,
     pub updated_at: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ApiUsage {
-    pub id: i64,
-    pub operation: String,
-    pub model: String,
-    pub input_tokens: i64,
-    pub output_tokens: i64,
-    pub cost_usd: f64,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Settings {
-    pub gemini_api_key: String,
-    pub language: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -185,20 +84,6 @@ pub struct DatasetRow {
     pub dataset_id: i64,
     pub row_index: i64,
     pub data: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SecretKey {
-    pub id: i64,
-    pub key_name: String,            // 키 이름 (예: OPENAI_API_KEY, AWS_SECRET)
-    pub key_value: String,           // 키 값
-    pub key_type: String,            // 키 타입 (API_KEY, TOKEN, SECRET, CREDENTIAL, ENV_VAR, PASSWORD)
-    pub provider: String,            // 프로바이더 (OpenAI, AWS, Google, GitHub, etc.)
-    pub provider_url: Option<String>, // 프로바이더 링크/콘솔 URL
-    pub description: Option<String>, // 설명
-    pub issued_date: String,         // 발급일자
-    pub expires_at: Option<String>,  // 만료일자
-    pub created_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -392,10 +277,6 @@ pub fn init_db(app_dir: PathBuf) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_alarms_enabled ON alarms(enabled);
     "#)?;
 
-    // 암호화 키 초기화
-    let enc_key = init_encryption_key(&conn);
-    ENCRYPTION_KEY.set(enc_key).ok();
-
     DB.set(Mutex::new(conn)).ok();
     Ok(())
 }
@@ -441,35 +322,6 @@ pub fn get_all_memos() -> Result<Vec<Memo>> {
     )?;
 
     let memos = stmt.query_map([], |row| {
-        Ok(Memo {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            content: row.get(2)?,
-            formatted_content: row.get(3)?,
-            summary: row.get(4)?,
-            category: row.get(5)?,
-            tags: row.get(6)?,
-            embedding: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
-        })
-    })?.collect::<Result<Vec<_>>>()?;
-
-    Ok(memos)
-}
-
-// 메모 검색 (텍스트)
-pub fn search_memos(query: &str) -> Result<Vec<Memo>> {
-    let conn = get_db().lock();
-    let search_pattern = format!("%{}%", query);
-    let mut stmt = conn.prepare(
-        "SELECT id, title, content, formatted_content, summary, category, tags, embedding, created_at, updated_at
-         FROM memos
-         WHERE title LIKE ?1 OR content LIKE ?1 OR formatted_content LIKE ?1 OR tags LIKE ?1 OR category LIKE ?1
-         ORDER BY updated_at DESC"
-    )?;
-
-    let memos = stmt.query_map([&search_pattern], |row| {
         Ok(Memo {
             id: row.get(0)?,
             title: row.get(1)?,
@@ -627,16 +479,6 @@ pub fn delete_schedule(id: i64) -> Result<()> {
     Ok(())
 }
 
-// Google 이벤트 ID 업데이트
-pub fn update_schedule_google_id(id: i64, google_event_id: &str) -> Result<()> {
-    let conn = get_db().lock();
-    conn.execute(
-        "UPDATE schedules SET google_event_id = ?1 WHERE id = ?2",
-        params![google_event_id, id],
-    )?;
-    Ok(())
-}
-
 // ===== 할일 관련 함수 =====
 
 // 할일 저장
@@ -777,50 +619,6 @@ pub fn rename_category(old_name: &str, new_name: &str) -> Result<usize> {
     Ok(count)
 }
 
-// 테스트 데이터 삽입
-pub fn insert_test_memos(count: i64) -> Result<i64> {
-    let conn = get_db().lock();
-
-    // 표준 카테고리 목록 사용
-    let categories = ["업무", "개인", "아이디어", "회의록", "학습", "연락처", "쇼핑", "여행", "건강", "기타"];
-    let tags_list = [
-        "중요, 긴급",
-        "나중에, 참고",
-        "아이디어, 브레인스토밍",
-        "회의, 팀",
-        "공부, 기술",
-        "연락처, 사람",
-        "쇼핑, 구매",
-        "여행, 휴가",
-        "운동, 건강",
-        "기타, 메모",
-    ];
-
-    for i in 0..count {
-        let cat_idx = (i as usize) % categories.len();
-        let title = format!("테스트 메모 #{}", i + 1);
-        let content = format!(
-            "이것은 테스트 메모 {}번입니다.\n\n오늘의 할일:\n- 첫 번째 할일\n- 두 번째 할일\n- 세 번째 할일\n\n이 메모는 무한 스크롤 테스트를 위해 생성되었습니다.",
-            i + 1
-        );
-
-        conn.execute(
-            "INSERT INTO memos (title, content, formatted_content, summary, category, tags)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                title,
-                content,
-                content,
-                format!("테스트 메모 {} 요약", i + 1),
-                categories[cat_idx],
-                tags_list[cat_idx]
-            ],
-        )?;
-    }
-
-    Ok(count)
-}
-
 // ===== 가계부(거래) 관련 함수 =====
 
 // 거래 저장
@@ -925,17 +723,6 @@ pub fn delete_transactions_by_memo_id(memo_id: i64) -> Result<usize> {
     Ok(count)
 }
 
-// 메모 원본 내용 조회
-pub fn get_memo_content(id: i64) -> Result<String> {
-    let conn = get_db().lock();
-    let content: String = conn.query_row(
-        "SELECT content FROM memos WHERE id = ?1",
-        params![id],
-        |row| row.get(0),
-    )?;
-    Ok(content)
-}
-
 // ===== 첨부파일 관련 함수 =====
 
 // 첨부파일 저장
@@ -1027,14 +814,6 @@ pub fn search_attachments(query: &str) -> Result<Vec<Attachment>> {
         })
     })?.collect::<Result<Vec<_>>>()?;
 
-    Ok(attachments)
-}
-
-// 메모별 첨부파일 삭제 (메모 삭제 시 CASCADE로 자동 삭제되지만, 파일도 삭제하기 위해)
-pub fn get_and_delete_attachments_by_memo(memo_id: i64) -> Result<Vec<Attachment>> {
-    let attachments = get_attachments_by_memo(memo_id)?;
-    let conn = get_db().lock();
-    conn.execute("DELETE FROM attachments WHERE memo_id = ?1", params![memo_id])?;
     Ok(attachments)
 }
 
@@ -1190,158 +969,6 @@ pub fn search_dataset_rows(dataset_id: i64, search_text: &str) -> Result<Vec<Dat
     })?.collect::<Result<Vec<_>>>()?;
 
     Ok(rows)
-}
-
-// ===== 시크릿 키 관리 함수 =====
-
-// 시크릿 키 저장
-pub fn save_secret_key(key: &SecretKey) -> Result<i64> {
-    let conn = get_db().lock();
-    // 키 값 암호화
-    let encrypted_value = encrypt_value(&key.key_value);
-    conn.execute(
-        "INSERT INTO secret_keys (key_name, key_value, key_type, provider, provider_url, description, issued_date, expires_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![
-            key.key_name,
-            encrypted_value,  // 암호화된 값 저장
-            key.key_type,
-            key.provider,
-            key.provider_url,
-            key.description,
-            key.issued_date,
-            key.expires_at
-        ],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
-
-// 모든 시크릿 키 조회
-pub fn get_all_secret_keys() -> Result<Vec<SecretKey>> {
-    let conn = get_db().lock();
-    let mut stmt = conn.prepare(
-        "SELECT id, key_name, key_value, key_type, provider, provider_url, description, issued_date, expires_at, created_at
-         FROM secret_keys ORDER BY provider ASC, key_name ASC, created_at DESC"
-    )?;
-
-    let keys = stmt.query_map([], |row| {
-        let encrypted_value: String = row.get(2)?;
-        // 복호화 (실패하면 암호화된 값 그대로 반환)
-        let decrypted_value = decrypt_value(&encrypted_value).unwrap_or(encrypted_value);
-        Ok(SecretKey {
-            id: row.get(0)?,
-            key_name: row.get(1)?,
-            key_value: decrypted_value,  // 복호화된 값
-            key_type: row.get(3)?,
-            provider: row.get(4)?,
-            provider_url: row.get(5)?,
-            description: row.get(6)?,
-            issued_date: row.get(7)?,
-            expires_at: row.get(8)?,
-            created_at: row.get(9)?,
-        })
-    })?.collect::<Result<Vec<_>>>()?;
-
-    Ok(keys)
-}
-
-// 시크릿 키 수정
-pub fn update_secret_key(
-    id: i64,
-    key_name: &str,
-    key_value: &str,
-    key_type: &str,
-    provider: &str,
-    provider_url: Option<&str>,
-    description: Option<&str>,
-    issued_date: &str,
-    expires_at: Option<&str>,
-) -> Result<()> {
-    let conn = get_db().lock();
-    // 키 값 암호화
-    let encrypted_value = encrypt_value(key_value);
-    conn.execute(
-        "UPDATE secret_keys SET key_name = ?1, key_value = ?2, key_type = ?3, provider = ?4, provider_url = ?5, description = ?6, issued_date = ?7, expires_at = ?8 WHERE id = ?9",
-        params![key_name, encrypted_value, key_type, provider, provider_url, description, issued_date, expires_at, id],
-    )?;
-    Ok(())
-}
-
-// 시크릿 키 삭제
-pub fn delete_secret_key(id: i64) -> Result<()> {
-    let conn = get_db().lock();
-    conn.execute("DELETE FROM secret_keys WHERE id = ?1", params![id])?;
-    Ok(())
-}
-
-// 프로바이더별 시크릿 키 조회
-pub fn get_secret_keys_by_provider(provider: &str) -> Result<Vec<SecretKey>> {
-    let conn = get_db().lock();
-    let mut stmt = conn.prepare(
-        "SELECT id, key_name, key_value, key_type, provider, provider_url, description, issued_date, expires_at, created_at
-         FROM secret_keys WHERE provider = ?1 ORDER BY key_name ASC, created_at DESC"
-    )?;
-
-    let keys = stmt.query_map([provider], |row| {
-        let encrypted_value: String = row.get(2)?;
-        let decrypted_value = decrypt_value(&encrypted_value).unwrap_or(encrypted_value);
-        Ok(SecretKey {
-            id: row.get(0)?,
-            key_name: row.get(1)?,
-            key_value: decrypted_value,
-            key_type: row.get(3)?,
-            provider: row.get(4)?,
-            provider_url: row.get(5)?,
-            description: row.get(6)?,
-            issued_date: row.get(7)?,
-            expires_at: row.get(8)?,
-            created_at: row.get(9)?,
-        })
-    })?.collect::<Result<Vec<_>>>()?;
-
-    Ok(keys)
-}
-
-// 모든 프로바이더 목록 조회
-pub fn get_all_secret_providers() -> Result<Vec<String>> {
-    let conn = get_db().lock();
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT provider FROM secret_keys ORDER BY provider"
-    )?;
-
-    let providers = stmt.query_map([], |row| {
-        row.get::<_, String>(0)
-    })?.collect::<Result<Vec<_>>>()?;
-
-    Ok(providers)
-}
-
-// 키 타입별 시크릿 키 조회
-pub fn get_secret_keys_by_type(key_type: &str) -> Result<Vec<SecretKey>> {
-    let conn = get_db().lock();
-    let mut stmt = conn.prepare(
-        "SELECT id, key_name, key_value, key_type, provider, provider_url, description, issued_date, expires_at, created_at
-         FROM secret_keys WHERE key_type = ?1 ORDER BY provider ASC, key_name ASC"
-    )?;
-
-    let keys = stmt.query_map([key_type], |row| {
-        let encrypted_value: String = row.get(2)?;
-        let decrypted_value = decrypt_value(&encrypted_value).unwrap_or(encrypted_value);
-        Ok(SecretKey {
-            id: row.get(0)?,
-            key_name: row.get(1)?,
-            key_value: decrypted_value,
-            key_type: row.get(3)?,
-            provider: row.get(4)?,
-            provider_url: row.get(5)?,
-            description: row.get(6)?,
-            issued_date: row.get(7)?,
-            expires_at: row.get(8)?,
-            created_at: row.get(9)?,
-        })
-    })?.collect::<Result<Vec<_>>>()?;
-
-    Ok(keys)
 }
 
 // === Postit 관련 함수 ===

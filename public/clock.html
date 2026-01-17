@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clock</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #0f172a;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', monospace;
+        color: #fff;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .container {
+        width: 100%;
+        height: 100%;
+        background: #0f172a;
+        border-radius: 12px;
+        padding: 12px 20px;
+        position: relative;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .controls {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .container:hover .controls { opacity: 1; }
+      .btn {
+        width: 18px; height: 18px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.7);
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .btn:hover { background: rgba(255,255,255,0.2); }
+      .btn.close:hover { background: #ef4444; }
+      .drag-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 28px;
+        cursor: move;
+        border-radius: 12px 12px 0 0;
+        background: rgba(255,255,255,0.03);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .drag-handle::after {
+        content: '⋮⋮';
+        font-size: 10px;
+        color: rgba(255,255,255,0.2);
+        letter-spacing: 2px;
+      }
+      .time {
+        font-size: 48px;
+        font-weight: 700;
+        letter-spacing: -2px;
+        line-height: 1;
+        background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .seconds {
+        font-size: 24px;
+        font-weight: 400;
+        vertical-align: super;
+        opacity: 0.6;
+        margin-left: 4px;
+      }
+      .date {
+        font-size: 13px;
+        color: rgba(255,255,255,0.6);
+        margin-top: 8px;
+        font-weight: 500;
+      }
+      .format-toggle {
+        position: absolute;
+        bottom: 6px;
+        left: 6px;
+        font-size: 9px;
+        padding: 2px 6px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.5);
+        border-radius: 4px;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .container:hover .format-toggle { opacity: 1; }
+      .format-toggle:hover { background: rgba(255,255,255,0.2); }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="container">
+      <div class="drag-handle" id="dragHandle" data-tauri-drag-region></div>
+      <div class="controls">
+        <button class="btn" id="pinBtn" title="고정">📌</button>
+        <button class="btn close" id="closeBtn" title="닫기">✕</button>
+      </div>
+      <div class="time" id="time">00:00<span class="seconds" id="seconds">00</span></div>
+      <div class="date" id="date"></div>
+      <button class="format-toggle" id="formatToggle">24H</button>
+    </div>
+
+    <script type="module">
+      const { getCurrentWindow } = window.__TAURI__.window;
+      const win = getCurrentWindow();
+
+      let pinned = true;
+      let is24Hour = true;
+      win.setAlwaysOnTop(true);
+
+      document.getElementById('pinBtn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        pinned = !pinned;
+        await win.setAlwaysOnTop(pinned);
+        document.getElementById('pinBtn').style.opacity = pinned ? '1' : '0.4';
+      });
+
+      document.getElementById('closeBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        win.close();
+      });
+
+      document.getElementById('dragHandle').addEventListener('mousedown', async (e) => {
+        try { await win.startDragging(); } catch (err) {}
+      });
+
+      document.getElementById('formatToggle').addEventListener('click', () => {
+        is24Hour = !is24Hour;
+        document.getElementById('formatToggle').textContent = is24Hour ? '24H' : '12H';
+        render();
+      });
+
+      function render() {
+        const now = new Date();
+        let hours = now.getHours();
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const seconds = now.getSeconds().toString().padStart(2, '0');
+
+        let timeStr;
+        if (is24Hour) {
+          timeStr = `${hours.toString().padStart(2, '0')}:${minutes}`;
+        } else {
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          hours = hours % 12 || 12;
+          timeStr = `${hours}:${minutes} ${ampm}`;
+        }
+
+        document.getElementById('time').innerHTML = `${timeStr}<span class="seconds" id="seconds">${seconds}</span>`;
+
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 (${days[now.getDay()]})`;
+        document.getElementById('date').textContent = dateStr;
+      }
+
+      render();
+      setInterval(render, 1000);
+    </script>
+  </body>
+</html>

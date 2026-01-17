@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Timer & Stopwatch</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #0f172a;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', monospace;
+        color: #fff;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .container {
+        width: 100%;
+        height: 100%;
+        background: #0f172a;
+        border-radius: 12px;
+        padding: 16px;
+        padding-top: 32px;
+        position: relative;
+      }
+      .controls {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .container:hover .controls { opacity: 1; }
+      .btn {
+        width: 18px; height: 18px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.7);
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .btn:hover { background: rgba(255,255,255,0.2); }
+      .btn.close:hover { background: #ef4444; }
+      .drag-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 28px;
+        cursor: move;
+        border-radius: 12px 12px 0 0;
+        background: rgba(255,255,255,0.03);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .drag-handle::after {
+        content: '⋮⋮';
+        font-size: 10px;
+        color: rgba(255,255,255,0.2);
+        letter-spacing: 2px;
+      }
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+      .tab {
+        flex: 1;
+        padding: 6px 12px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.6);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .tab.active {
+        background: #3b82f6;
+        color: #fff;
+      }
+      .display {
+        text-align: center;
+        font-size: 42px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        margin: 16px 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .display.running { color: #22c55e; }
+      .display.paused { color: #f59e0b; }
+      .display.alarm { color: #ef4444; animation: blink 0.5s infinite; }
+      @keyframes blink { 50% { opacity: 0.5; } }
+      .ms {
+        font-size: 20px;
+        opacity: 0.6;
+      }
+      .action-btns {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+      }
+      .action-btn {
+        padding: 8px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        transition: all 0.2s;
+      }
+      .action-btn.start { background: #22c55e; color: #fff; }
+      .action-btn.start:hover { background: #16a34a; }
+      .action-btn.pause { background: #f59e0b; color: #fff; }
+      .action-btn.pause:hover { background: #d97706; }
+      .action-btn.reset { background: rgba(255,255,255,0.1); color: #fff; }
+      .action-btn.reset:hover { background: rgba(255,255,255,0.2); }
+      .timer-presets {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .preset-btn {
+        padding: 4px 10px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.7);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .preset-btn:hover { background: rgba(255,255,255,0.2); }
+      .preset-btn.active { background: #3b82f6; color: #fff; }
+      .laps {
+        max-height: 80px;
+        overflow-y: auto;
+        margin-top: 12px;
+        font-size: 11px;
+      }
+      .lap {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 8px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 4px;
+        margin-bottom: 2px;
+      }
+      .lap-num { color: rgba(255,255,255,0.5); }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="container">
+      <div class="drag-handle" id="dragHandle" data-tauri-drag-region></div>
+      <div class="controls">
+        <button class="btn" id="pinBtn" title="고정">📌</button>
+        <button class="btn close" id="closeBtn" title="닫기">✕</button>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" id="stopwatchTab">스톱워치</button>
+        <button class="tab" id="timerTab">타이머</button>
+      </div>
+
+      <!-- Stopwatch -->
+      <div id="stopwatchView">
+        <div class="display" id="stopwatchDisplay">00:00<span class="ms">.00</span></div>
+        <div class="action-btns">
+          <button class="action-btn start" id="swStart">시작</button>
+          <button class="action-btn reset" id="swLap">랩</button>
+          <button class="action-btn reset" id="swReset">리셋</button>
+        </div>
+        <div class="laps" id="laps"></div>
+      </div>
+
+      <!-- Timer -->
+      <div id="timerView" class="hidden">
+        <div class="timer-presets">
+          <button class="preset-btn" data-time="60">1분</button>
+          <button class="preset-btn" data-time="180">3분</button>
+          <button class="preset-btn" data-time="300">5분</button>
+          <button class="preset-btn" data-time="600">10분</button>
+          <button class="preset-btn active" data-time="1500">25분</button>
+          <button class="preset-btn" data-time="3600">1시간</button>
+        </div>
+        <div class="display" id="timerDisplay">25:00</div>
+        <div class="action-btns">
+          <button class="action-btn start" id="tmStart">시작</button>
+          <button class="action-btn reset" id="tmReset">리셋</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      const { getCurrentWindow } = window.__TAURI__.window;
+      const win = getCurrentWindow();
+
+      let pinned = true;
+      win.setAlwaysOnTop(true);
+
+      document.getElementById('pinBtn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        pinned = !pinned;
+        await win.setAlwaysOnTop(pinned);
+        document.getElementById('pinBtn').style.opacity = pinned ? '1' : '0.4';
+      });
+
+      document.getElementById('closeBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        win.close();
+      });
+
+      document.getElementById('dragHandle').addEventListener('mousedown', async (e) => {
+        try { await win.startDragging(); } catch (err) {}
+      });
+
+      // Tab switching
+      document.getElementById('stopwatchTab').addEventListener('click', () => {
+        document.getElementById('stopwatchTab').classList.add('active');
+        document.getElementById('timerTab').classList.remove('active');
+        document.getElementById('stopwatchView').classList.remove('hidden');
+        document.getElementById('timerView').classList.add('hidden');
+      });
+
+      document.getElementById('timerTab').addEventListener('click', () => {
+        document.getElementById('timerTab').classList.add('active');
+        document.getElementById('stopwatchTab').classList.remove('active');
+        document.getElementById('timerView').classList.remove('hidden');
+        document.getElementById('stopwatchView').classList.add('hidden');
+      });
+
+      // Stopwatch
+      let swTime = 0;
+      let swInterval = null;
+      let swRunning = false;
+      let laps = [];
+
+      function formatSW(ms) {
+        const totalSec = Math.floor(ms / 1000);
+        const min = Math.floor(totalSec / 60);
+        const sec = totalSec % 60;
+        const centisec = Math.floor((ms % 1000) / 10);
+        return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}<span class="ms">.${centisec.toString().padStart(2, '0')}</span>`;
+      }
+
+      function renderSW() {
+        const display = document.getElementById('stopwatchDisplay');
+        display.innerHTML = formatSW(swTime);
+        display.className = 'display' + (swRunning ? ' running' : '');
+      }
+
+      document.getElementById('swStart').addEventListener('click', () => {
+        if (swRunning) {
+          clearInterval(swInterval);
+          swRunning = false;
+          document.getElementById('swStart').textContent = '계속';
+          document.getElementById('swStart').className = 'action-btn start';
+        } else {
+          const startTime = Date.now() - swTime;
+          swInterval = setInterval(() => {
+            swTime = Date.now() - startTime;
+            renderSW();
+          }, 10);
+          swRunning = true;
+          document.getElementById('swStart').textContent = '정지';
+          document.getElementById('swStart').className = 'action-btn pause';
+        }
+        renderSW();
+      });
+
+      document.getElementById('swLap').addEventListener('click', () => {
+        if (swRunning || swTime > 0) {
+          laps.unshift(swTime);
+          const lapsEl = document.getElementById('laps');
+          lapsEl.innerHTML = laps.map((t, i) =>
+            `<div class="lap"><span class="lap-num">#${laps.length - i}</span><span>${formatSW(t).replace(/<[^>]*>/g, '')}</span></div>`
+          ).join('');
+        }
+      });
+
+      document.getElementById('swReset').addEventListener('click', () => {
+        clearInterval(swInterval);
+        swTime = 0;
+        swRunning = false;
+        laps = [];
+        document.getElementById('laps').innerHTML = '';
+        document.getElementById('swStart').textContent = '시작';
+        document.getElementById('swStart').className = 'action-btn start';
+        renderSW();
+      });
+
+      // Timer
+      let tmTime = 25 * 60;
+      let tmInitial = 25 * 60;
+      let tmInterval = null;
+      let tmRunning = false;
+
+      function formatTM(sec) {
+        const min = Math.floor(sec / 60);
+        const s = sec % 60;
+        return `${min.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      }
+
+      function renderTM() {
+        const display = document.getElementById('timerDisplay');
+        display.textContent = formatTM(tmTime);
+        display.className = 'display' + (tmTime === 0 ? ' alarm' : tmRunning ? ' running' : '');
+      }
+
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          tmInitial = parseInt(btn.dataset.time);
+          tmTime = tmInitial;
+          renderTM();
+        });
+      });
+
+      document.getElementById('tmStart').addEventListener('click', () => {
+        if (tmRunning) {
+          clearInterval(tmInterval);
+          tmRunning = false;
+          document.getElementById('tmStart').textContent = '계속';
+          document.getElementById('tmStart').className = 'action-btn start';
+        } else if (tmTime > 0) {
+          tmInterval = setInterval(() => {
+            tmTime--;
+            renderTM();
+            if (tmTime === 0) {
+              clearInterval(tmInterval);
+              tmRunning = false;
+              document.getElementById('tmStart').textContent = '시작';
+              document.getElementById('tmStart').className = 'action-btn start';
+            }
+          }, 1000);
+          tmRunning = true;
+          document.getElementById('tmStart').textContent = '정지';
+          document.getElementById('tmStart').className = 'action-btn pause';
+        }
+        renderTM();
+      });
+
+      document.getElementById('tmReset').addEventListener('click', () => {
+        clearInterval(tmInterval);
+        tmTime = tmInitial;
+        tmRunning = false;
+        document.getElementById('tmStart').textContent = '시작';
+        document.getElementById('tmStart').className = 'action-btn start';
+        renderTM();
+      });
+
+      renderSW();
+      renderTM();
+    </script>
+  </body>
+</html>

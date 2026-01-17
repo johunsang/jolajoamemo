@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Time Block</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #0f172a;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', monospace;
+        color: #fff;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      .container {
+        width: 100%;
+        height: 100%;
+        background: #0f172a;
+        border-radius: 10px;
+        padding: 10px 14px;
+        padding-top: 28px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        position: relative;
+      }
+
+      .time {
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        line-height: 1;
+      }
+
+      .pomodoro-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .pomodoro-time {
+        font-size: 18px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.5);
+      }
+
+      .pomodoro-time.work {
+        color: #ef4444;
+      }
+
+      .pomodoro-time.break {
+        color: #22c55e;
+      }
+
+      .start-btn {
+        font-size: 11px;
+        padding: 4px 10px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        background: rgba(255,255,255,0.15);
+        color: rgba(255,255,255,0.8);
+        font-weight: 500;
+      }
+
+      .start-btn:hover {
+        background: rgba(255,255,255,0.25);
+      }
+
+      .start-btn.active {
+        background: #ef4444;
+        color: #fff;
+      }
+
+      .active-block {
+        font-size: 11px;
+        color: rgba(255,255,255,0.6);
+        max-width: 160px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .controls {
+        position: absolute;
+        top: 4px;
+        right: 6px;
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+
+      .container:hover .controls {
+        opacity: 1;
+      }
+
+      .btn {
+        width: 16px;
+        height: 16px;
+        border: none;
+        background: rgba(255,255,255,0.2);
+        color: rgba(255,255,255,0.7);
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .btn:hover {
+        background: rgba(255,255,255,0.3);
+      }
+
+      .btn.close:hover {
+        background: #ef4444;
+      }
+
+      .drag-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 24px;
+        cursor: move;
+        border-radius: 10px 10px 0 0;
+        background: rgba(255,255,255,0.03);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .drag-handle::after {
+        content: '⋮⋮';
+        font-size: 10px;
+        color: rgba(255,255,255,0.2);
+        letter-spacing: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="container">
+      <div class="drag-handle" id="dragHandle" data-tauri-drag-region></div>
+      <div class="controls">
+        <button class="btn" id="pinBtn" title="고정">📌</button>
+        <button class="btn close" id="closeBtn" title="닫기">✕</button>
+      </div>
+      <div class="time" id="clock">00:00</div>
+      <div class="pomodoro-row">
+        <span class="pomodoro-time" id="pomodoroTime">25:00</span>
+        <button class="start-btn" id="startBtn">시작</button>
+      </div>
+      <div class="active-block" id="activeBlock"></div>
+    </div>
+
+    <script type="module">
+      const { getCurrentWindow } = window.__TAURI__.window;
+      const win = getCurrentWindow();
+
+      let pinned = true;
+      win.setAlwaysOnTop(true);
+
+      document.getElementById('pinBtn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        pinned = !pinned;
+        await win.setAlwaysOnTop(pinned);
+        document.getElementById('pinBtn').style.opacity = pinned ? '1' : '0.4';
+      });
+
+      document.getElementById('closeBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        win.close();
+      });
+
+      // 드래그
+      document.getElementById('dragHandle').addEventListener('mousedown', async (e) => {
+        try {
+          await win.startDragging();
+        } catch (err) {}
+      });
+
+      // 포모도로
+      let pomodoroState = 'idle';
+      let pomodoroTime = 25 * 60;
+      let pomodoroInterval = null;
+
+      document.getElementById('startBtn').addEventListener('click', () => {
+        if (pomodoroState === 'idle') {
+          pomodoroState = 'work';
+          pomodoroTime = 25 * 60;
+          startTimer();
+        } else {
+          pomodoroState = 'idle';
+          pomodoroTime = 25 * 60;
+          if (pomodoroInterval) clearInterval(pomodoroInterval);
+          pomodoroInterval = null;
+        }
+        render();
+      });
+
+      function startTimer() {
+        if (pomodoroInterval) clearInterval(pomodoroInterval);
+        pomodoroInterval = setInterval(() => {
+          pomodoroTime--;
+          if (pomodoroTime <= 0) {
+            if (pomodoroState === 'work') {
+              pomodoroState = 'break';
+              pomodoroTime = 5 * 60;
+            } else {
+              pomodoroState = 'idle';
+              pomodoroTime = 25 * 60;
+              clearInterval(pomodoroInterval);
+              pomodoroInterval = null;
+            }
+          }
+          render();
+        }, 1000);
+      }
+
+      function fmt(sec) {
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+      }
+
+      function getBlocks() {
+        const saved = localStorage.getItem('timeBlocks');
+        return saved ? JSON.parse(saved) : [];
+      }
+
+      function getActiveBlock() {
+        const blocks = getBlocks();
+        const now = new Date();
+        const mins = now.getHours() * 60 + now.getMinutes();
+        return blocks.find(b => {
+          const [sh, sm] = b.startTime.split(':').map(Number);
+          const [eh, em] = b.endTime.split(':').map(Number);
+          return mins >= sh * 60 + sm && mins < eh * 60 + em;
+        });
+      }
+
+      function render() {
+        const now = new Date();
+        document.getElementById('clock').textContent =
+          now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+
+        const pomodoroEl = document.getElementById('pomodoroTime');
+        pomodoroEl.textContent = fmt(pomodoroTime);
+        pomodoroEl.className = 'pomodoro-time ' + (pomodoroState === 'work' ? 'work' : pomodoroState === 'break' ? 'break' : '');
+
+        const startBtn = document.getElementById('startBtn');
+        startBtn.textContent = pomodoroState === 'idle' ? '시작' : '중지';
+        startBtn.className = 'start-btn ' + (pomodoroState !== 'idle' ? 'active' : '');
+
+        const active = getActiveBlock();
+        const activeEl = document.getElementById('activeBlock');
+        if (active) {
+          activeEl.innerHTML = `<span style="color:${active.color}">●</span> ${active.title}`;
+        } else {
+          activeEl.textContent = '';
+        }
+      }
+
+      render();
+      setInterval(render, 1000);
+      window.addEventListener('storage', render);
+    </script>
+  </body>
+</html>

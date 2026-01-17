@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calendar</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #0f172a;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #fff;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .container {
+        width: 100%;
+        height: 100%;
+        background: #0f172a;
+        border-radius: 12px;
+        padding: 12px;
+        padding-top: 32px;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+      }
+      .controls {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 10;
+      }
+      .container:hover .controls { opacity: 1; }
+      .btn {
+        width: 20px; height: 20px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.7);
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .btn:hover { background: rgba(255,255,255,0.2); }
+      .btn.close:hover { background: #ef4444; }
+      .drag-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 28px;
+        cursor: move;
+        border-radius: 12px 12px 0 0;
+        background: rgba(255,255,255,0.03);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
+      }
+      .drag-handle::after {
+        content: '⋮⋮';
+        font-size: 10px;
+        color: rgba(255,255,255,0.2);
+        letter-spacing: 2px;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        padding: 0 4px;
+      }
+      .month-year {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .nav-btns {
+        display: flex;
+        gap: 4px;
+      }
+      .nav-btn {
+        width: 24px; height: 24px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: #fff;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .nav-btn:hover { background: rgba(255,255,255,0.2); }
+      .weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        margin-bottom: 4px;
+      }
+      .weekday {
+        text-align: center;
+        font-size: 10px;
+        color: rgba(255,255,255,0.5);
+        padding: 2px;
+      }
+      .weekday:first-child { color: #ef4444; }
+      .weekday:last-child { color: #3b82f6; }
+      .days {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+      }
+      .day {
+        aspect-ratio: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.2s;
+        position: relative;
+      }
+      .day:hover { background: rgba(255,255,255,0.1); }
+      .day.other-month { color: rgba(255,255,255,0.3); }
+      .day.today {
+        background: #3b82f6;
+        font-weight: 600;
+      }
+      .day.selected {
+        background: #22c55e;
+        font-weight: 600;
+      }
+      .day.sunday { color: #ef4444; }
+      .day.saturday { color: #3b82f6; }
+      .day.has-schedule::after {
+        content: '';
+        position: absolute;
+        bottom: 3px;
+        width: 4px;
+        height: 4px;
+        background: #f59e0b;
+        border-radius: 50%;
+      }
+      .day.today.has-schedule::after,
+      .day.selected.has-schedule::after {
+        background: #fff;
+      }
+      .schedule-panel {
+        margin-top: 8px;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        padding-top: 8px;
+        flex: 1;
+        overflow-y: auto;
+        min-height: 60px;
+      }
+      .schedule-date {
+        font-size: 11px;
+        color: rgba(255,255,255,0.6);
+        margin-bottom: 6px;
+      }
+      .schedule-item {
+        font-size: 11px;
+        padding: 6px 8px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 4px;
+        margin-bottom: 4px;
+        border-left: 3px solid #f59e0b;
+      }
+      .schedule-item .time {
+        color: #f59e0b;
+        font-size: 10px;
+        margin-bottom: 2px;
+      }
+      .schedule-item .title {
+        color: #fff;
+      }
+      .no-schedule {
+        font-size: 11px;
+        color: rgba(255,255,255,0.4);
+        text-align: center;
+        padding: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="container">
+      <div class="drag-handle" id="dragHandle" data-tauri-drag-region></div>
+      <div class="controls">
+        <button class="btn" id="pinBtn" title="고정">📌</button>
+        <button class="btn close" id="closeBtn" title="닫기">✕</button>
+      </div>
+      <div class="header">
+        <span class="month-year" id="monthYear"></span>
+        <div class="nav-btns">
+          <button class="nav-btn" id="prevBtn">◀</button>
+          <button class="nav-btn" id="todayBtn">●</button>
+          <button class="nav-btn" id="nextBtn">▶</button>
+        </div>
+      </div>
+      <div class="weekdays">
+        <div class="weekday">일</div>
+        <div class="weekday">월</div>
+        <div class="weekday">화</div>
+        <div class="weekday">수</div>
+        <div class="weekday">목</div>
+        <div class="weekday">금</div>
+        <div class="weekday">토</div>
+      </div>
+      <div class="days" id="days"></div>
+      <div class="schedule-panel" id="schedulePanel">
+        <div class="no-schedule">날짜를 선택하세요</div>
+      </div>
+    </div>
+
+    <script type="module">
+      const { getCurrentWindow } = window.__TAURI__.window;
+      const { invoke } = window.__TAURI__.core;
+      const win = getCurrentWindow();
+
+      let pinned = true;
+      let schedules = [];
+      win.setAlwaysOnTop(true);
+
+      // 일정 데이터 로드
+      async function loadSchedules() {
+        try {
+          schedules = await invoke('get_schedules');
+          console.log('Loaded schedules:', schedules);
+        } catch (err) {
+          console.error('Failed to load schedules:', err);
+          schedules = [];
+        }
+      }
+
+      // 특정 날짜의 일정 가져오기
+      function getSchedulesForDate(date) {
+        const dateStr = date.toISOString().split('T')[0];
+        return schedules.filter(s => {
+          // start_time에서 날짜 부분만 추출 (형식: "2024-01-15" 또는 "2024-01-15 14:00")
+          const scheduleDate = s.start_time ? s.start_time.split(' ')[0].split('T')[0] : '';
+          return scheduleDate === dateStr;
+        });
+      }
+
+      // 일정이 있는 날짜인지 확인
+      function hasScheduleOnDate(date) {
+        return getSchedulesForDate(date).length > 0;
+      }
+
+      document.getElementById('pinBtn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        pinned = !pinned;
+        await win.setAlwaysOnTop(pinned);
+        document.getElementById('pinBtn').style.opacity = pinned ? '1' : '0.4';
+      });
+
+      document.getElementById('closeBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        win.close();
+      });
+
+      document.getElementById('dragHandle').addEventListener('mousedown', async (e) => {
+        try { await win.startDragging(); } catch (err) {}
+      });
+
+      let currentDate = new Date();
+      let selectedDate = new Date();
+
+      function renderSchedulePanel() {
+        const panel = document.getElementById('schedulePanel');
+        const daySchedules = getSchedulesForDate(selectedDate);
+
+        const dateStr = `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일`;
+
+        if (daySchedules.length === 0) {
+          panel.innerHTML = `<div class="schedule-date">${dateStr}</div><div class="no-schedule">일정이 없습니다</div>`;
+        } else {
+          let html = `<div class="schedule-date">${dateStr} - ${daySchedules.length}개의 일정</div>`;
+          daySchedules.forEach(s => {
+            // start_time에서 시간 부분 추출 (형식: "2024-01-15 14:00" 또는 "14:00")
+            let time = '';
+            if (s.start_time) {
+              const parts = s.start_time.split(' ');
+              time = parts.length > 1 ? parts[1] : '';
+            }
+            html += `<div class="schedule-item">
+              ${time ? `<div class="time">${time}</div>` : ''}
+              <div class="title">${s.title}</div>
+            </div>`;
+          });
+          panel.innerHTML = html;
+        }
+      }
+
+      function render() {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+
+        document.getElementById('monthYear').textContent = `${year}년 ${month + 1}월`;
+
+        const firstDay = new Date(year, month, 1);
+        const startDate = new Date(firstDay);
+        startDate.setDate(startDate.getDate() - firstDay.getDay());
+
+        const today = new Date();
+        const daysEl = document.getElementById('days');
+        daysEl.innerHTML = '';
+
+        for (let i = 0; i < 42; i++) {
+          const date = new Date(startDate);
+          date.setDate(startDate.getDate() + i);
+
+          const day = document.createElement('div');
+          day.className = 'day';
+          day.textContent = date.getDate();
+
+          if (date.getMonth() !== month) day.classList.add('other-month');
+          if (date.getDay() === 0) day.classList.add('sunday');
+          if (date.getDay() === 6) day.classList.add('saturday');
+          if (date.toDateString() === today.toDateString()) day.classList.add('today');
+          if (selectedDate && date.toDateString() === selectedDate.toDateString()) {
+            day.classList.add('selected');
+          }
+          if (hasScheduleOnDate(date)) {
+            day.classList.add('has-schedule');
+          }
+
+          day.addEventListener('click', () => {
+            selectedDate = new Date(date);
+            render();
+            renderSchedulePanel();
+          });
+
+          daysEl.appendChild(day);
+
+          if (i >= 35 && date.getMonth() !== month) break;
+        }
+      }
+
+      document.getElementById('prevBtn').addEventListener('click', () => {
+        currentDate.setMonth(currentDate.getMonth() - 1);
+        render();
+      });
+
+      document.getElementById('nextBtn').addEventListener('click', () => {
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        render();
+      });
+
+      document.getElementById('todayBtn').addEventListener('click', () => {
+        currentDate = new Date();
+        selectedDate = new Date();
+        render();
+        renderSchedulePanel();
+      });
+
+      // 초기화
+      await loadSchedules();
+      render();
+      renderSchedulePanel();
+    </script>
+  </body>
+</html>

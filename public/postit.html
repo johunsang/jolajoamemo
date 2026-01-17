@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Post-it</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #fef08a;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .container {
+        width: 100%;
+        height: 100%;
+        background: #fef08a;
+        border-radius: 4px;
+        padding: 8px;
+        padding-top: 28px;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+      }
+      .container.yellow { background: #fef08a; }
+      .container.pink { background: #fda4af; }
+      .container.blue { background: #93c5fd; }
+      .container.green { background: #86efac; }
+      .container.orange { background: #fdba74; }
+      .container.purple { background: #c4b5fd; }
+      .controls {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        display: flex;
+        gap: 2px;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .container:hover .controls { opacity: 1; }
+      .btn {
+        width: 18px; height: 18px;
+        border: none;
+        background: rgba(0,0,0,0.1);
+        color: rgba(0,0,0,0.6);
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .btn:hover { background: rgba(0,0,0,0.2); }
+      .btn.close:hover { background: #ef4444; color: #fff; }
+      .drag-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 24px;
+        cursor: move;
+        border-radius: 4px 4px 0 0;
+        background: rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .drag-handle::after {
+        content: '⋮⋮';
+        font-size: 10px;
+        color: rgba(0,0,0,0.3);
+        letter-spacing: 2px;
+      }
+      .color-picker {
+        position: absolute;
+        top: 26px;
+        right: 4px;
+        display: none;
+        flex-direction: column;
+        gap: 2px;
+        background: rgba(255,255,255,0.9);
+        padding: 4px;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      }
+      .color-picker.show { display: flex; }
+      .color-btn {
+        width: 18px; height: 18px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .color-btn.yellow { background: #fef08a; }
+      .color-btn.pink { background: #fda4af; }
+      .color-btn.blue { background: #93c5fd; }
+      .color-btn.green { background: #86efac; }
+      .color-btn.orange { background: #fdba74; }
+      .color-btn.purple { background: #c4b5fd; }
+      .content {
+        flex: 1;
+        width: 100%;
+        border: none;
+        background: transparent;
+        resize: none;
+        font-size: 14px;
+        line-height: 1.5;
+        color: rgba(0,0,0,0.8);
+        font-family: inherit;
+        padding: 4px;
+        margin-top: 0;
+      }
+      .content:focus {
+        outline: none;
+      }
+      .content::placeholder {
+        color: rgba(0,0,0,0.3);
+      }
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 4px;
+        font-size: 10px;
+        color: rgba(0,0,0,0.4);
+      }
+      .char-count {
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container yellow" id="container">
+      <div class="drag-handle" id="dragHandle" data-tauri-drag-region></div>
+      <div class="controls">
+        <button class="btn" id="colorBtn" title="색상">🎨</button>
+        <button class="btn" id="pinBtn" title="고정">📌</button>
+        <button class="btn close" id="closeBtn" title="닫기">✕</button>
+      </div>
+      <div class="color-picker" id="colorPicker">
+        <button class="color-btn yellow" data-color="yellow"></button>
+        <button class="color-btn pink" data-color="pink"></button>
+        <button class="color-btn blue" data-color="blue"></button>
+        <button class="color-btn green" data-color="green"></button>
+        <button class="color-btn orange" data-color="orange"></button>
+        <button class="color-btn purple" data-color="purple"></button>
+      </div>
+      <textarea class="content" id="content" placeholder="메모를 입력하세요..."></textarea>
+      <div class="footer">
+        <span id="timestamp"></span>
+        <span class="char-count" id="charCount">0자</span>
+      </div>
+    </div>
+
+    <script type="module">
+      const { getCurrentWindow } = window.__TAURI__.window;
+      const { invoke } = window.__TAURI__.core;
+      const win = getCurrentWindow();
+
+      const postitId = new URLSearchParams(window.location.search).get('id') || 'default';
+
+      let pinned = true;
+      let currentColor = 'yellow';
+      win.setAlwaysOnTop(true);
+
+      // Load saved data from database
+      async function loadData() {
+        try {
+          const postit = await invoke('get_postit', { id: postitId });
+          if (postit) {
+            document.getElementById('content').value = postit.content || '';
+            currentColor = postit.color || 'yellow';
+            document.getElementById('container').className = `container ${currentColor}`;
+            updateCharCount();
+          }
+        } catch (err) {
+          console.error('Failed to load postit:', err);
+        }
+      }
+      loadData();
+
+      async function save() {
+        const postit = {
+          id: postitId,
+          content: document.getElementById('content').value,
+          color: currentColor,
+          position_x: 100,
+          position_y: 100,
+          width: 220,
+          height: 200,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        try {
+          await invoke('save_postit', { postit });
+        } catch (err) {
+          console.error('Failed to save postit:', err);
+        }
+        updateTimestamp();
+      }
+
+      function updateCharCount() {
+        const len = document.getElementById('content').value.length;
+        document.getElementById('charCount').textContent = `${len}자`;
+      }
+
+      function updateTimestamp() {
+        const now = new Date();
+        document.getElementById('timestamp').textContent =
+          now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      }
+
+      document.getElementById('pinBtn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        pinned = !pinned;
+        await win.setAlwaysOnTop(pinned);
+        document.getElementById('pinBtn').style.opacity = pinned ? '1' : '0.4';
+      });
+
+      document.getElementById('closeBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        save();
+        win.close();
+      });
+
+      document.getElementById('dragHandle').addEventListener('mousedown', async (e) => {
+        try { await win.startDragging(); } catch (err) {}
+      });
+
+      document.getElementById('colorBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.getElementById('colorPicker').classList.toggle('show');
+      });
+
+      document.querySelectorAll('.color-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          currentColor = btn.dataset.color;
+          document.getElementById('container').className = `container ${currentColor}`;
+          document.getElementById('colorPicker').classList.remove('show');
+          save();
+        });
+      });
+
+      document.getElementById('content').addEventListener('input', () => {
+        updateCharCount();
+        save();
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#colorBtn') && !e.target.closest('#colorPicker')) {
+          document.getElementById('colorPicker').classList.remove('show');
+        }
+      });
+
+      updateTimestamp();
+      updateCharCount();
+
+      // Auto-save every 30 seconds
+      setInterval(save, 30000);
+    </script>
+  </body>
+</html>
