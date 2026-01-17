@@ -1838,7 +1838,7 @@ async fn export_collected_data_sheets(data: Vec<ai::CollectedData>, title: Strin
 }
 
 #[tauri::command]
-async fn export_collected_data_excel(app_handle: tauri::AppHandle, data: Vec<ai::CollectedData>) -> Result<String, String> {
+async fn export_collected_data_excel(_app_handle: tauri::AppHandle, data: Vec<ai::CollectedData>) -> Result<String, String> {
     use std::io::Write;
 
     // 저장 경로 설정
@@ -2023,7 +2023,7 @@ fn is_scan_cancelled() -> bool {
 
 #[tauri::command]
 async fn scan_for_consulting(app_handle: tauri::AppHandle, path: String) -> Result<ai::FileConsultingResult, String> {
-    use std::sync::{Arc, atomic::{AtomicU64, Ordering as AtomicOrdering}};
+    use std::sync::{Arc, atomic::AtomicU64};
     use std::collections::{VecDeque, HashMap};
     use parking_lot::Mutex;
 
@@ -2167,7 +2167,7 @@ fn build_folder_tree(
 
     let mut children: Vec<TreeNode> = folder_info
         .iter()
-        .filter(|(path, (_, parent, _, _, _))| {
+        .filter(|(_path, (_, parent, _, _, _))| {
             if let Some(p) = parent {
                 p == parent_path
             } else {
